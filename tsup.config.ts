@@ -13,6 +13,8 @@ export default defineConfig({
     'plugins/dedupe': 'src/plugins/dedupe.ts',
     'plugins/transport': 'src/plugins/transport.ts',
     'plugins/offline-queue': 'src/plugins/offline-queue.ts',
+    'plugins/websocket': 'src/plugins/websocket.ts',
+    parsers: 'src/parsers/index.ts',
   },
   format: ['esm', 'cjs'],
   dts: true,

@@ -142,6 +142,28 @@
         "default": "./dist/plugins/offline-queue.js"
       },
       "default": "./dist/plugins/offline-queue.js"
+    },
+    "./plugins/websocket": {
+      "import": {
+        "types": "./dist/plugins/websocket.d.mts",
+        "default": "./dist/plugins/websocket.mjs"
+      },
+      "require": {
+        "types": "./dist/plugins/websocket.d.ts",
+        "default": "./dist/plugins/websocket.js"
+      },
+      "default": "./dist/plugins/websocket.js"
+    },
+    "./parsers": {
+      "import": {
+        "types": "./dist/parsers.d.mts",
+        "default": "./dist/parsers.mjs"
+      },
+      "require": {
+        "types": "./dist/parsers.d.ts",
+        "default": "./dist/parsers.js"
+      },
+      "default": "./dist/parsers.js"
     }
   },
   "typesVersions": {
@@ -155,13 +177,16 @@
       "plugins/dedupe": ["./dist/plugins/dedupe.d.ts"],
       "plugins/performance": ["./dist/plugins/performance.d.ts"],
       "plugins/sse-trace": ["./dist/plugins/sse-trace.d.ts"],
-      "plugins/offline-queue": ["./dist/plugins/offline-queue.d.ts"]
+      "plugins/offline-queue": ["./dist/plugins/offline-queue.d.ts"],
+      "plugins/websocket": ["./dist/plugins/websocket.d.ts"],
+      "parsers": ["./dist/parsers.d.ts"]
     }
   },
   "files": [
     "dist",
     "react",
     "plugins",
+    "parsers",
     "README.md",
     "LICENSE"
   ],

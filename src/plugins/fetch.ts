@@ -1,6 +1,7 @@
-import type { MonitorPlugin, MonitorInstance, StreamTrace } from '../core/types';
+import type { MonitorPlugin, MonitorInstance, StreamTrace, ChunkParser, BuiltinParserName } from '../core/types';
 import { Monitor } from '../core/monitor';
 import { now } from '../core/utils';
+import { resolveParser } from '../parsers/index';
 
 export interface FetchPluginOptions {
   /** 只拦截匹配的 URL */
@@ -13,6 +14,12 @@ export interface FetchPluginOptions {
    * 自动创建 StreamTrace 追踪整个流的生命周期。
    */
   streamPatterns?: RegExp[];
+  /**
+   * 流式内容解析器。配置后将解析 SSE 内容，
+   * 自动驱动 StreamTrace 的 thinking 阶段、tool call、token 用量等。
+   * 不配置时行为与之前一致（仅字节级追踪）。
+   */
+  parser?: BuiltinParserName | ChunkParser;
 }
 
 /**
@@ -21,6 +28,7 @@ export interface FetchPluginOptions {
  * 普通请求：记录 url / method / status / duration。
  * AI 流式响应：自动创建 StreamTrace，包裹 ReadableStream 追踪
  * TTFT、TTLB、chunkCount、totalBytes。
+ * 配置 parser 后还可自动识别 thinking 阶段、tool call、token 用量。
  */
 export class FetchPlugin implements MonitorPlugin {
   readonly name = 'fetch';
@@ -28,6 +36,7 @@ export class FetchPlugin implements MonitorPlugin {
 
   private options: FetchPluginOptions;
   private originalFetch: typeof fetch | null = null;
+  private resolvedParser: ChunkParser | null = null;
 
   constructor(options: FetchPluginOptions = {}) {
     this.options = options;
@@ -35,6 +44,10 @@ export class FetchPlugin implements MonitorPlugin {
 
   setup(instance: MonitorInstance): void {
     if (typeof fetch === 'undefined') return;
+
+    if (this.options.parser) {
+      this.resolvedParser = resolveParser(this.options.parser);
+    }
 
     const monitor = instance as Monitor;
     const endpoint = monitor.config.endpoint;
@@ -115,7 +128,6 @@ export class FetchPlugin implements MonitorPlugin {
     if (this.options.includeUrls && this.options.includeUrls.length > 0) {
       return this.options.includeUrls.some((re) => re.test(url));
     }
-    // 没有 includeUrls 时，只拦截 streamPatterns 匹配的 URL，不再劫持全部请求
     if (this.options.streamPatterns && this.options.streamPatterns.length > 0) {
       return this.options.streamPatterns.some((re) => re.test(url));
     }
@@ -134,7 +146,7 @@ export class FetchPlugin implements MonitorPlugin {
 
   /**
    * 包裹 Response 的 ReadableStream body，在数据流经时自动追踪生命周期。
-   * 使用 TransformStream 作为中间层，对业务代码完全透明。
+   * 配置了 parser 时，还会解码文本、逐行解析，自动驱动 trace 的语义事件。
    */
   private wrapStreamResponse(response: Response, monitor: Monitor, url: string): Response {
     const body = response.body!;
@@ -150,13 +162,79 @@ export class FetchPlugin implements MonitorPlugin {
     let totalBytes = 0;
     let completed = false;
 
-    const finalize = (aborted: boolean) => {
+    const parser = this.resolvedParser;
+    const decoder = parser ? new TextDecoder() : null;
+    let textBuffer = '';
+    let isInThinking = false;
+    let hasContentStarted = false;
+    const reportedToolCalls = new Set<string>();
+
+    const finalize = (aborted: boolean, tokenUsage?: Record<string, number | undefined>) => {
       if (completed) return;
       completed = true;
       if (aborted) {
         trace.abort();
       } else {
-        trace.complete({ chunkCount, totalBytes, url });
+        const result: Record<string, unknown> = { chunkCount, totalBytes, url };
+        if (tokenUsage) {
+          if (tokenUsage.promptTokens != null) result.promptTokens = tokenUsage.promptTokens;
+          if (tokenUsage.completionTokens != null) result.completionTokens = tokenUsage.completionTokens;
+          if (tokenUsage.totalTokens != null) result.totalTokens = tokenUsage.totalTokens;
+        }
+        trace.complete(result);
+      }
+    };
+
+    const processLines = (text: string) => {
+      if (!parser) return;
+      textBuffer += text;
+      const lines = textBuffer.split('\n');
+      textBuffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const chunk = parser.parse(line);
+        if (!chunk) continue;
+
+        // thinking 阶段自动检测
+        if (chunk.thinking && !isInThinking) {
+          isInThinking = true;
+          trace.onPhase('thinking', 'start');
+        }
+        if (isInThinking && chunk.content && !chunk.thinking) {
+          isInThinking = false;
+          trace.onPhase('thinking', 'end');
+        }
+
+        // generating 阶段自动检测
+        if (chunk.content && !hasContentStarted) {
+          hasContentStarted = true;
+          if (!isInThinking) {
+            trace.onPhase('generating', 'start');
+          }
+        }
+
+        // 工具调用
+        if (chunk.toolCalls) {
+          for (const tc of chunk.toolCalls) {
+            const key = `${tc.name}_${JSON.stringify(tc.arguments)}`;
+            if (!reportedToolCalls.has(key)) {
+              reportedToolCalls.add(key);
+              trace.onToolCall(tc.name, tc.arguments);
+            }
+          }
+        }
+
+        // 完成
+        if (chunk.done) {
+          if (isInThinking) {
+            trace.onPhase('thinking', 'end');
+            isInThinking = false;
+          }
+          if (hasContentStarted) {
+            trace.onPhase('generating', 'end');
+          }
+          finalize(false, chunk.tokenUsage as Record<string, number | undefined> | undefined);
+        }
       }
     };
 
@@ -165,7 +243,10 @@ export class FetchPlugin implements MonitorPlugin {
         try {
           const { done, value } = await reader.read();
           if (done) {
-            finalize(false);
+            if (parser && textBuffer.trim()) {
+              processLines('\n');
+            }
+            if (!completed) finalize(false);
             controller.close();
             return;
           }
@@ -175,6 +256,11 @@ export class FetchPlugin implements MonitorPlugin {
           }
           chunkCount++;
           totalBytes += value.byteLength;
+
+          if (decoder) {
+            processLines(decoder.decode(value, { stream: true }));
+          }
+
           controller.enqueue(value);
         } catch (err) {
           finalize(true);

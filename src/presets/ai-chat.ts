@@ -29,13 +29,14 @@ function isDevMode(): boolean {
  * // 最简接入
  * const monitor = createAIChatMonitor({ appId: 'my-ai-app' })
  *
- * // 带配置
+ * // 带配置（自动解析 OpenAI 兼容格式的流式内容）
  * const monitor = createAIChatMonitor({
  *   appId: 'my-ai-app',
  *   endpoint: '/api/telemetry',
  *   preset: 'production',
  *   sampling: { rate: 0.1 },
  *   fetch: { streamPatterns: [/\/api\/chat/, /\/v1\/completions/] },
+ *   parser: 'openai',
  * })
  * ```
  */
@@ -99,6 +100,7 @@ export function createAIChatMonitor(config: AIChatMonitorConfig): MonitorInstanc
         includeUrls: config.fetch?.includeUrls,
         excludeUrls: config.fetch?.excludeUrls ?? [/\/api\/monitor/],
         streamPatterns: config.fetch?.streamPatterns,
+        parser: config.parser,
       }),
     );
   }

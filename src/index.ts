@@ -16,6 +16,9 @@ export type {
   SSETraceOptions,
   AIChatMonitorConfig,
   PresetMode,
+  ParsedChunk,
+  ChunkParser,
+  BuiltinParserName,
 } from './core/types';
 
 // 预设（开箱即用入口）
@@ -38,3 +41,12 @@ export { SSEAutoPlugin } from './plugins/sse-trace';
 export type { SSEAutoPluginOptions } from './plugins/sse-trace';
 export { OfflineQueuePlugin } from './plugins/offline-queue';
 export type { OfflineQueuePluginOptions } from './plugins/offline-queue';
+export { WebSocketPlugin } from './plugins/websocket';
+export type { WebSocketPluginOptions } from './plugins/websocket';
+
+// 解析器（按需引入）
+export { OpenAIChunkParser } from './parsers/openai';
+export type { OpenAIChunkParserOptions } from './parsers/openai';
+export { AnthropicChunkParser } from './parsers/anthropic';
+export { extractTagThinking } from './parsers/tag-thinking';
+export { resolveParser } from './parsers/index';

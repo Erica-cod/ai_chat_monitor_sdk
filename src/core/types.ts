@@ -161,6 +161,37 @@ export type SSETraceOptions = StreamTraceOptions;
 /** @deprecated 请使用 StreamTrace */
 export type SSETrace = StreamTrace;
 
+/** 流式 chunk 解析结果 */
+export interface ParsedChunk {
+  /** 文本内容增量 */
+  content?: string;
+  /** thinking / reasoning 增量 */
+  thinking?: string;
+  /** 工具调用（done=true 时为完整调用列表） */
+  toolCalls?: { name: string; arguments?: Record<string, unknown> }[];
+  /** token 用量（通常在 done=true 时可用） */
+  tokenUsage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+  /** 流是否结束 */
+  done?: boolean;
+  /** 结束原因 */
+  finishReason?: 'stop' | 'tool_calls' | null;
+}
+
+/**
+ * 流式 chunk 解析器接口。
+ * 将不同供应商的 SSE/JSON 行格式统一解析为 ParsedChunk，
+ * 供 FetchPlugin / SSEAutoPlugin / WebSocketPlugin 自动驱动 StreamTrace。
+ */
+export interface ChunkParser {
+  /** 解析一行/一块流数据 */
+  parse(raw: string): ParsedChunk | null;
+  /** 重置内部累积状态（多轮工具调用时使用） */
+  reset(): void;
+}
+
+/** 内置解析器名称 */
+export type BuiltinParserName = 'openai' | 'anthropic' | 'auto';
+
 /** 传输层接口 */
 export interface TransportSendFn {
   (endpoint: string, events: MonitorEvent[]): boolean;
@@ -209,6 +240,16 @@ export interface AIChatMonitorConfig extends MonitorConfig {
     /** 匹配的 URL 会被视为 AI 流式端点，自动创建 StreamTrace */
     streamPatterns?: RegExp[];
   };
+  /**
+   * 流式内容解析器。
+   * 传入后 FetchPlugin / SSEAutoPlugin 会自动解析流内容并驱动 StreamTrace 生命周期
+   * （thinking 阶段检测、tool call 识别、token 用量提取等）。
+   * - `'openai'`：OpenAI / DeepSeek / 火山引擎等 OpenAI 兼容格式
+   * - `'anthropic'`：Claude 的 event stream 格式
+   * - `'auto'`：根据首行内容自动检测
+   * - `ChunkParser`：自定义解析器实例
+   */
+  parser?: BuiltinParserName | ChunkParser;
   /** 去重窗口（毫秒） */
   dedupeWindow?: number;
   /**
