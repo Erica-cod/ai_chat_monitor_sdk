@@ -45,11 +45,11 @@ app.post('/api/monitor', (req, res) => {
     const appId = event.context?.appId ?? 'unknown';
 
     switch (event.type) {
-      case 'sse_first_chunk':
-        if (event.data.ttfb) sseLatency.observe({ app_id: appId }, event.data.ttfb);
+      case 'stream_first_token':
+        if (event.data.ttft) sseLatency.observe({ app_id: appId }, event.data.ttft as number);
         break;
-      case 'sse_complete':
-        if (event.data.ttlb) sseTTLB.observe({ app_id: appId }, event.data.ttlb);
+      case 'stream_complete':
+        if (event.data.ttlb) sseTTLB.observe({ app_id: appId }, event.data.ttlb as number);
         break;
       case 'js_error':
       case 'promise_error':

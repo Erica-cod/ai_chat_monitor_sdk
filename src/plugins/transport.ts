@@ -148,7 +148,8 @@ export class TransportPlugin implements MonitorPlugin {
       keepalive: true,
     }).catch(() => {
       if (retries < this.options.maxRetries!) {
-        setTimeout(() => this.sendViaFetch(payload, retries + 1), 1000 * 2 ** retries);
+        const delay = Math.min(1000 * 2 ** retries, 30_000);
+        setTimeout(() => this.sendViaFetch(payload, retries + 1), delay);
       } else {
         this.emitFailed(payload);
       }

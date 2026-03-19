@@ -122,6 +122,6 @@ export class WebSocketPlugin implements MonitorPlugin {
     if (this.options.includeUrls && this.options.includeUrls.length > 0) {
       return this.options.includeUrls.some((re) => re.test(url));
     }
-    return true;
+    return false;
   }
 }

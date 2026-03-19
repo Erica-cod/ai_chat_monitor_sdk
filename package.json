@@ -168,18 +168,42 @@
   },
   "typesVersions": {
     "*": {
-      "react": ["./dist/react.d.ts"],
-      "plugins/error": ["./dist/plugins/error.d.ts"],
-      "plugins/fetch": ["./dist/plugins/fetch.d.ts"],
-      "plugins/transport": ["./dist/plugins/transport.d.ts"],
-      "plugins/session": ["./dist/plugins/session.d.ts"],
-      "plugins/sampling": ["./dist/plugins/sampling.d.ts"],
-      "plugins/dedupe": ["./dist/plugins/dedupe.d.ts"],
-      "plugins/performance": ["./dist/plugins/performance.d.ts"],
-      "plugins/sse-trace": ["./dist/plugins/sse-trace.d.ts"],
-      "plugins/offline-queue": ["./dist/plugins/offline-queue.d.ts"],
-      "plugins/websocket": ["./dist/plugins/websocket.d.ts"],
-      "parsers": ["./dist/parsers.d.ts"]
+      "react": [
+        "./dist/react.d.ts"
+      ],
+      "plugins/error": [
+        "./dist/plugins/error.d.ts"
+      ],
+      "plugins/fetch": [
+        "./dist/plugins/fetch.d.ts"
+      ],
+      "plugins/transport": [
+        "./dist/plugins/transport.d.ts"
+      ],
+      "plugins/session": [
+        "./dist/plugins/session.d.ts"
+      ],
+      "plugins/sampling": [
+        "./dist/plugins/sampling.d.ts"
+      ],
+      "plugins/dedupe": [
+        "./dist/plugins/dedupe.d.ts"
+      ],
+      "plugins/performance": [
+        "./dist/plugins/performance.d.ts"
+      ],
+      "plugins/sse-trace": [
+        "./dist/plugins/sse-trace.d.ts"
+      ],
+      "plugins/offline-queue": [
+        "./dist/plugins/offline-queue.d.ts"
+      ],
+      "plugins/websocket": [
+        "./dist/plugins/websocket.d.ts"
+      ],
+      "parsers": [
+        "./dist/parsers.d.ts"
+      ]
     }
   },
   "files": [
@@ -202,6 +226,7 @@
   "devDependencies": {
     "@types/node": "^25.5.0",
     "@types/react": "^19.0.0",
+    "jsdom": "^29.0.0",
     "react": "^19.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.7.0",

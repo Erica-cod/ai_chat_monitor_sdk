@@ -124,7 +124,7 @@ export class OfflineQueuePlugin implements MonitorPlugin {
     }
   }
 
-  private getAllEvents(): Promise<(MonitorEvent & { _retries: number; _queuedAt: number })[]> {
+  private getAllEvents(filterExpired = true): Promise<(MonitorEvent & { _retries: number; _queuedAt: number })[]> {
     return new Promise((resolve) => {
       if (!this.db) return resolve([]);
 
@@ -133,9 +133,9 @@ export class OfflineQueuePlugin implements MonitorPlugin {
       const request = store.getAll();
 
       request.onsuccess = () => {
-        const results = request.result.filter(
-          (e: { _retries: number }) => e._retries < this.options.maxRetries,
-        );
+        const results = filterExpired
+          ? request.result.filter((e: { _retries: number }) => e._retries < this.options.maxRetries)
+          : request.result;
         resolve(results);
       };
       request.onerror = () => resolve([]);
@@ -173,7 +173,7 @@ export class OfflineQueuePlugin implements MonitorPlugin {
   /** 超过 maxSize 时淘汰最旧的事件，为新事件腾出空间 */
   private async evictIfNeeded(incoming: number): Promise<void> {
     if (!this.db) return;
-    const all = await this.getAllEventsRaw();
+    const all = await this.getAllEvents(false);
     const overflow = all.length + incoming - this.options.maxSize;
     if (overflow <= 0) return;
 
@@ -188,7 +188,7 @@ export class OfflineQueuePlugin implements MonitorPlugin {
   /** 删除已超过最大重试次数的过期事件（在 flushQueue 中调用） */
   private async purgeExpired(): Promise<void> {
     if (!this.db) return;
-    const all = await this.getAllEventsRaw();
+    const all = await this.getAllEvents(false);
     const expired = all
       .filter((e) => e._retries >= this.options.maxRetries)
       .map((e) => e.id);
@@ -197,17 +197,4 @@ export class OfflineQueuePlugin implements MonitorPlugin {
     }
   }
 
-  /** 获取所有事件（不过滤重试次数） */
-  private getAllEventsRaw(): Promise<(MonitorEvent & { _retries: number; _queuedAt: number })[]> {
-    return new Promise((resolve) => {
-      if (!this.db) return resolve([]);
-
-      const tx = this.db.transaction(STORE_NAME, 'readonly');
-      const store = tx.objectStore(STORE_NAME);
-      const request = store.getAll();
-
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => resolve([]);
-    });
-  }
 }

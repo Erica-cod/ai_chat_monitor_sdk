@@ -140,7 +140,7 @@ export class FetchPlugin implements MonitorPlugin {
 
   private isStreamResponse(response: Response): boolean {
     const ct = response.headers.get('content-type') ?? '';
-    return ct.includes('text/event-stream') || ct.includes('application/stream+json') || ct.includes('text/plain');
+    return ct.includes('text/event-stream') || ct.includes('application/stream+json') || ct.includes('application/x-ndjson');
   }
 
   /**

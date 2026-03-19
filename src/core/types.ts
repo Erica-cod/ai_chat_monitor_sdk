@@ -83,6 +83,8 @@ export interface MonitorInstance {
 
   /** 注册插件 */
   use(plugin: MonitorPlugin): MonitorInstance;
+  /** 初始化所有已注册插件（需在 use() 全部调用后执行） */
+  init(): MonitorInstance;
   /** 创建一个带有上下文的监控事件 */
   createEvent(type: MonitorEventType, data: Record<string, unknown>): MonitorEvent;
   /** 提交监控事件（经过插件管道处理） */

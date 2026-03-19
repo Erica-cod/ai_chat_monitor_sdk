@@ -1,4 +1,5 @@
 import type { MonitorContext, MonitorConfig } from './types';
+import { uid } from './utils';
 
 /**
  * 全局上下文管理器。
@@ -30,8 +31,6 @@ export class ContextManager {
   }
 
   private generateSessionId(): string {
-    const ts = Date.now().toString(36);
-    const rand = Math.random().toString(36).slice(2, 8);
-    return `s_${ts}_${rand}`;
+    return uid();
   }
 }

@@ -5,6 +5,8 @@ import { SessionPlugin } from '../plugins/session';
 import { SamplingPlugin } from '../plugins/sampling';
 import { DedupePlugin } from '../plugins/dedupe';
 import { FetchPlugin } from '../plugins/fetch';
+import { PerformancePlugin } from '../plugins/performance';
+import { OfflineQueuePlugin } from '../plugins/offline-queue';
 import type { AIChatMonitorConfig, MonitorInstance } from '../core/types';
 
 /**
@@ -101,6 +103,11 @@ export function createAIChatMonitor(config: AIChatMonitorConfig): MonitorInstanc
     );
   }
 
+  // 性能监控（minimal 模式不启用）
+  if (preset !== 'minimal') {
+    monitor.use(new PerformancePlugin());
+  }
+
   // 传输
   monitor.use(
     new TransportPlugin({
@@ -113,6 +120,11 @@ export function createAIChatMonitor(config: AIChatMonitorConfig): MonitorInstanc
       customSend: config.transport?.customSend,
     }),
   );
+
+  // 离线队列（production 模式默认启用，为弱网场景提供容错）
+  if (preset === 'production') {
+    monitor.use(new OfflineQueuePlugin());
+  }
 
   monitor.init();
   return monitor;

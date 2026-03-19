@@ -4,7 +4,7 @@ import { resolveParser } from '../parsers/index';
 import { StreamParserDriver } from '../core/stream-parser-driver';
 
 export interface SSEAutoPluginOptions {
-  /** 只追踪匹配的 URL，不传则追踪所有 EventSource 连接 */
+  /** 只追踪匹配的 URL（必须配置，否则不追踪任何连接） */
   includeUrls?: RegExp[];
   /** 排除匹配的 URL（优先级高于 includeUrls） */
   excludeUrls?: RegExp[];
@@ -136,6 +136,6 @@ export class SSEAutoPlugin implements MonitorPlugin {
     if (this.options.includeUrls && this.options.includeUrls.length > 0) {
       return this.options.includeUrls.some((re) => re.test(url));
     }
-    return true;
+    return false;
   }
 }

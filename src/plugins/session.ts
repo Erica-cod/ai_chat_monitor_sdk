@@ -1,5 +1,5 @@
 import type { MonitorPlugin, MonitorInstance } from '../core/types';
-import { isBrowser } from '../core/utils';
+import { isBrowser, uid } from '../core/utils';
 
 const SESSION_KEY = 'ai_stream_monitor_session';
 const SESSION_TTL = 30 * 60 * 1000; // 30 分钟无操作则过期
@@ -128,6 +128,6 @@ export class SessionPlugin implements MonitorPlugin {
   }
 
   private generateId(): string {
-    return `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    return uid();
   }
 }
