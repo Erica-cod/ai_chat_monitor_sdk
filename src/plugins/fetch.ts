@@ -1,7 +1,7 @@
-import type { MonitorPlugin, MonitorInstance, StreamTrace, ChunkParser, BuiltinParserName } from '../core/types';
-import { Monitor } from '../core/monitor';
-import { now } from '../core/utils';
+import type { MonitorPlugin, MonitorInstance, ChunkParser, BuiltinParserName } from '../core/types';
+import { now, uid } from '../core/utils';
 import { resolveParser } from '../parsers/index';
+import { StreamParserDriver } from '../core/stream-parser-driver';
 
 export interface FetchPluginOptions {
   /** 只拦截匹配的 URL */
@@ -42,14 +42,13 @@ export class FetchPlugin implements MonitorPlugin {
     this.options = options;
   }
 
-  setup(instance: MonitorInstance): void {
+  setup(monitor: MonitorInstance): void {
     if (typeof fetch === 'undefined') return;
 
     if (this.options.parser) {
       this.resolvedParser = resolveParser(this.options.parser);
     }
 
-    const monitor = instance as Monitor;
     const endpoint = monitor.config.endpoint;
     const self = this;
 
@@ -141,19 +140,18 @@ export class FetchPlugin implements MonitorPlugin {
 
   private isStreamResponse(response: Response): boolean {
     const ct = response.headers.get('content-type') ?? '';
-    return ct.includes('text/event-stream') || ct.includes('application/stream') || !!response.body;
+    return ct.includes('text/event-stream') || ct.includes('application/stream+json') || ct.includes('text/plain');
   }
 
   /**
    * 包裹 Response 的 ReadableStream body，在数据流经时自动追踪生命周期。
-   * 配置了 parser 时，还会解码文本、逐行解析，自动驱动 trace 的语义事件。
+   * 配置了 parser 时，通过 StreamParserDriver 解码文本、逐行解析，
+   * 自动驱动 trace 的语义事件。
    */
-  private wrapStreamResponse(response: Response, monitor: Monitor, url: string): Response {
+  private wrapStreamResponse(response: Response, monitor: MonitorInstance, url: string): Response {
     const body = response.body!;
     const reader = body.getReader();
-    const trace: StreamTrace = monitor.createStreamTrace({
-      messageId: `fetch_${Date.now().toString(36)}`,
-    });
+    const trace = monitor.createStreamTrace({ messageId: uid() });
 
     trace.start();
 
@@ -163,77 +161,32 @@ export class FetchPlugin implements MonitorPlugin {
     let completed = false;
 
     const parser = this.resolvedParser;
-    const decoder = parser ? new TextDecoder() : null;
+    const driver = parser ? new StreamParserDriver(parser, trace) : null;
+    const decoder = driver ? new TextDecoder() : null;
     let textBuffer = '';
-    let isInThinking = false;
-    let hasContentStarted = false;
-    const reportedToolCalls = new Set<string>();
 
-    const finalize = (aborted: boolean, tokenUsage?: Record<string, number | undefined>) => {
+    const finalize = (aborted: boolean) => {
       if (completed) return;
       completed = true;
       if (aborted) {
         trace.abort();
-      } else {
-        const result: Record<string, unknown> = { chunkCount, totalBytes, url };
-        if (tokenUsage) {
-          if (tokenUsage.promptTokens != null) result.promptTokens = tokenUsage.promptTokens;
-          if (tokenUsage.completionTokens != null) result.completionTokens = tokenUsage.completionTokens;
-          if (tokenUsage.totalTokens != null) result.totalTokens = tokenUsage.totalTokens;
-        }
-        trace.complete(result);
+      } else if (driver && !driver.isEnded) {
+        driver.finalize();
+      } else if (!driver) {
+        trace.complete({ chunkCount, totalBytes, url } as Record<string, unknown>);
       }
     };
 
     const processLines = (text: string) => {
-      if (!parser) return;
+      if (!driver) return;
       textBuffer += text;
       const lines = textBuffer.split('\n');
       textBuffer = lines.pop() || '';
-
       for (const line of lines) {
-        const chunk = parser.parse(line);
-        if (!chunk) continue;
-
-        // thinking 阶段自动检测
-        if (chunk.thinking && !isInThinking) {
-          isInThinking = true;
-          trace.onPhase('thinking', 'start');
-        }
-        if (isInThinking && chunk.content && !chunk.thinking) {
-          isInThinking = false;
-          trace.onPhase('thinking', 'end');
-        }
-
-        // generating 阶段自动检测
-        if (chunk.content && !hasContentStarted) {
-          hasContentStarted = true;
-          if (!isInThinking) {
-            trace.onPhase('generating', 'start');
-          }
-        }
-
-        // 工具调用
-        if (chunk.toolCalls) {
-          for (const tc of chunk.toolCalls) {
-            const key = `${tc.name}_${JSON.stringify(tc.arguments)}`;
-            if (!reportedToolCalls.has(key)) {
-              reportedToolCalls.add(key);
-              trace.onToolCall(tc.name, tc.arguments);
-            }
-          }
-        }
-
-        // 完成
-        if (chunk.done) {
-          if (isInThinking) {
-            trace.onPhase('thinking', 'end');
-            isInThinking = false;
-          }
-          if (hasContentStarted) {
-            trace.onPhase('generating', 'end');
-          }
-          finalize(false, chunk.tokenUsage as Record<string, number | undefined> | undefined);
+        driver.feed(line);
+        if (driver.isEnded) {
+          completed = true;
+          break;
         }
       }
     };
@@ -243,9 +196,7 @@ export class FetchPlugin implements MonitorPlugin {
         try {
           const { done, value } = await reader.read();
           if (done) {
-            if (parser && textBuffer.trim()) {
-              processLines('\n');
-            }
+            if (driver && textBuffer.trim()) processLines('\n');
             if (!completed) finalize(false);
             controller.close();
             return;
@@ -256,11 +207,7 @@ export class FetchPlugin implements MonitorPlugin {
           }
           chunkCount++;
           totalBytes += value.byteLength;
-
-          if (decoder) {
-            processLines(decoder.decode(value, { stream: true }));
-          }
-
+          if (decoder) processLines(decoder.decode(value, { stream: true }));
           controller.enqueue(value);
         } catch (err) {
           finalize(true);

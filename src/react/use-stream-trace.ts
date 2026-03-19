@@ -1,5 +1,6 @@
 import { useRef, useCallback, useEffect } from 'react';
 import { useMonitor } from './provider';
+import { uid } from '../core/utils';
 import type { StreamTrace, StreamTraceOptions } from '../core/types';
 
 /**
@@ -39,6 +40,8 @@ import type { StreamTrace, StreamTraceOptions } from '../core/types';
 export function useStreamTrace(options: Omit<StreamTraceOptions, 'messageId'> & { messageId?: string }) {
   const monitor = useMonitor();
   const traceRef = useRef<StreamTrace | null>(null);
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
 
   useEffect(() => {
     return () => {
@@ -57,16 +60,17 @@ export function useStreamTrace(options: Omit<StreamTraceOptions, 'messageId'> & 
         return NOOP_TRACE;
       }
 
-      const id = messageId ?? options.messageId ?? `msg_${Date.now().toString(36)}`;
+      const opts = optionsRef.current;
+      const id = messageId ?? opts.messageId ?? uid();
       const trace = monitor.createStreamTrace({
-        ...options,
+        ...opts,
         messageId: id,
       });
 
       traceRef.current = trace;
       return trace;
     },
-    [monitor, options],
+    [monitor],
   );
 
   return { startTrace };

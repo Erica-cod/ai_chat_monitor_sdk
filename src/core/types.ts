@@ -83,6 +83,8 @@ export interface MonitorInstance {
 
   /** 注册插件 */
   use(plugin: MonitorPlugin): MonitorInstance;
+  /** 创建一个带有上下文的监控事件 */
+  createEvent(type: MonitorEventType, data: Record<string, unknown>): MonitorEvent;
   /** 提交监控事件（经过插件管道处理） */
   emit(event: MonitorEvent): void;
   /** 直接发送到传输层（跳过采样/去重） */
@@ -212,6 +214,8 @@ export interface AIChatMonitorConfig extends MonitorConfig {
     batchSize?: number;
     flushInterval?: number;
     maxRetries?: number;
+    /** 自定义请求头（认证 token、correlation ID 等），仅对 fetch 方式生效 */
+    headers?: Record<string, string>;
     /** 自定义上报函数，传入则跳过内置的 sendBeacon/fetch */
     customSend?: (endpoint: string, payload: string) => void;
   };

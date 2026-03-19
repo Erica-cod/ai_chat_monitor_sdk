@@ -1,5 +1,7 @@
 import type { MonitorPlugin, MonitorInstance, ChunkParser, BuiltinParserName } from '../core/types';
+import { uid } from '../core/utils';
 import { resolveParser } from '../parsers/index';
+import { StreamParserDriver } from '../core/stream-parser-driver';
 
 export interface WebSocketPluginOptions {
   /** 只追踪匹配的 URL */
@@ -14,7 +16,7 @@ export interface WebSocketPluginOptions {
  * WebSocket 自动追踪插件。
  * Patch 全局 WebSocket 构造函数，对匹配 URL 的连接自动创建 StreamTrace。
  *
- * ⚠️ 此插件会替换全局 WebSocket 构造函数，建议通过 includeUrls 限定范围。
+ * 此插件会替换全局 WebSocket 构造函数，建议通过 includeUrls 限定范围。
  */
 export class WebSocketPlugin implements MonitorPlugin {
   readonly name = 'websocket';
@@ -51,83 +53,45 @@ export class WebSocketPlugin implements MonitorPlugin {
       if (!self.shouldTrace(urlStr)) return ws;
 
       const parser = self.resolvedParser;
-      parser?.reset();
-
-      const trace = mon.createStreamTrace({
-        messageId: `ws_${Date.now().toString(36)}`,
-      });
+      const trace = mon.createStreamTrace({ messageId: uid() });
+      const driver = parser ? new StreamParserDriver(parser, trace) : null;
 
       let firstMessageReceived = false;
-      let isInThinking = false;
-      let hasContentStarted = false;
-      let traceEnded = false;
 
       ws.addEventListener('open', () => {
         trace.start();
       });
 
       ws.addEventListener('message', (event: MessageEvent) => {
-        if (traceEnded) return;
+        if (driver?.isEnded) return;
 
         if (!firstMessageReceived) {
           firstMessageReceived = true;
           trace.onFirstChunk();
         }
 
-        if (!parser) return;
+        if (!driver) return;
 
         const data = typeof event.data === 'string' ? event.data : '';
         if (!data) return;
 
         const lines = data.split('\n');
         for (const line of lines) {
-          const chunk = parser.parse(line);
-          if (!chunk) continue;
-
-          if (chunk.thinking && !isInThinking) {
-            isInThinking = true;
-            trace.onPhase('thinking', 'start');
-          }
-          if (isInThinking && chunk.content && !chunk.thinking) {
-            isInThinking = false;
-            trace.onPhase('thinking', 'end');
-          }
-          if (chunk.content && !hasContentStarted) {
-            hasContentStarted = true;
-            if (!isInThinking) trace.onPhase('generating', 'start');
-          }
-          if (chunk.toolCalls) {
-            for (const tc of chunk.toolCalls) {
-              trace.onToolCall(tc.name, tc.arguments);
-            }
-          }
-          if (chunk.done) {
-            if (isInThinking) trace.onPhase('thinking', 'end');
-            if (hasContentStarted) trace.onPhase('generating', 'end');
-            traceEnded = true;
-            const result: Record<string, unknown> = {};
-            if (chunk.tokenUsage) {
-              if (chunk.tokenUsage.promptTokens != null) result.promptTokens = chunk.tokenUsage.promptTokens;
-              if (chunk.tokenUsage.completionTokens != null) result.completionTokens = chunk.tokenUsage.completionTokens;
-              if (chunk.tokenUsage.totalTokens != null) result.totalTokens = chunk.tokenUsage.totalTokens;
-            }
-            trace.complete(result);
-          }
+          driver.feed(line);
+          if (driver.isEnded) break;
         }
       });
 
       ws.addEventListener('close', () => {
-        if (!traceEnded) {
-          traceEnded = true;
-          if (isInThinking) trace.onPhase('thinking', 'end');
-          if (hasContentStarted) trace.onPhase('generating', 'end');
+        if (driver && !driver.isEnded) {
+          driver.finalize();
+        } else if (!driver) {
           trace.complete();
         }
       });
 
       ws.addEventListener('error', () => {
-        if (!traceEnded) {
-          traceEnded = true;
+        if (!driver?.isEnded) {
           trace.error('WebSocket error');
         }
       });

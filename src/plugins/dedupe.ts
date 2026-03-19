@@ -1,4 +1,5 @@
 import type { MonitorPlugin, MonitorInstance, MonitorEvent } from '../core/types';
+import { now } from '../core/utils';
 
 export interface DedupePluginOptions {
   /** 去重时间窗口（毫秒），默认 5000 */
@@ -31,7 +32,7 @@ export class DedupePlugin implements MonitorPlugin {
   processEvent(event: MonitorEvent): MonitorEvent | null {
     const key = this.eventKey(event);
     const lastSeen = this.recent.get(key);
-    const t = Date.now();
+    const t = now();
 
     if (lastSeen && t - lastSeen < this.windowMs) {
       return null;
@@ -60,7 +61,7 @@ export class DedupePlugin implements MonitorPlugin {
   }
 
   private cleanup(): void {
-    const cutoff = Date.now() - this.windowMs;
+    const cutoff = now() - this.windowMs;
     for (const [key, time] of this.recent) {
       if (time < cutoff) this.recent.delete(key);
     }

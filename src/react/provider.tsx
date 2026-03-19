@@ -16,6 +16,10 @@ interface MonitorProviderProps {
  * - 初始化失败时降级为 null，不会导致 React 树崩溃
  * - 子组件可通过 useMonitor() 安全获取实例
  *
+ * 注意：Monitor 实例仅在首次渲染时创建，后续 config 变更不会触发重建。
+ * 这是有意为之——监控实例应保持稳定，避免频繁重建导致数据丢失。
+ * 如需更新运行时配置（如 userId），请使用 `monitor.setContext()`。
+ *
  * @example
  * ```tsx
  * <MonitorProvider config={{ appId: 'my-app' }}>

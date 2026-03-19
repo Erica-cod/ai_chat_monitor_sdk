@@ -38,9 +38,9 @@ export class Monitor implements MonitorInstance {
 
   constructor(config: MonitorConfig, beforeSend?: BeforeSendFn) {
     this.config = { ...DEFAULT_CONFIG, ...config } as Required<MonitorConfig>;
-    this.bus = new EventBus();
+    this.bus = new EventBus(this.config.debug);
     this.ctxManager = new ContextManager(this.config);
-    this.runner = new PluginRunner();
+    this.runner = new PluginRunner(this.config.debug);
     this.beforeSendFn = beforeSend ?? null;
   }
 

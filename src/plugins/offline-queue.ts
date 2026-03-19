@@ -72,6 +72,8 @@ export class OfflineQueuePlugin implements MonitorPlugin {
   async enqueue(events: MonitorEvent[]): Promise<void> {
     if (!this.db) return;
 
+    await this.evictIfNeeded(events.length);
+
     const tx = this.db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
 
@@ -102,6 +104,8 @@ export class OfflineQueuePlugin implements MonitorPlugin {
 
   private async flushQueue(): Promise<void> {
     if (!this.db || !this.monitor || !navigator.onLine) return;
+
+    await this.purgeExpired();
 
     const events = await this.getAllEvents();
     if (events.length === 0) return;
@@ -163,6 +167,47 @@ export class OfflineQueuePlugin implements MonitorPlugin {
       }
       tx.oncomplete = () => resolve();
       tx.onerror = () => resolve();
+    });
+  }
+
+  /** 超过 maxSize 时淘汰最旧的事件，为新事件腾出空间 */
+  private async evictIfNeeded(incoming: number): Promise<void> {
+    if (!this.db) return;
+    const all = await this.getAllEventsRaw();
+    const overflow = all.length + incoming - this.options.maxSize;
+    if (overflow <= 0) return;
+
+    const toRemove = all
+      .sort((a, b) => a._queuedAt - b._queuedAt)
+      .slice(0, overflow)
+      .map((e) => e.id);
+
+    await this.removeEvents(toRemove);
+  }
+
+  /** 删除已超过最大重试次数的过期事件（在 flushQueue 中调用） */
+  private async purgeExpired(): Promise<void> {
+    if (!this.db) return;
+    const all = await this.getAllEventsRaw();
+    const expired = all
+      .filter((e) => e._retries >= this.options.maxRetries)
+      .map((e) => e.id);
+    if (expired.length > 0) {
+      await this.removeEvents(expired);
+    }
+  }
+
+  /** 获取所有事件（不过滤重试次数） */
+  private getAllEventsRaw(): Promise<(MonitorEvent & { _retries: number; _queuedAt: number })[]> {
+    return new Promise((resolve) => {
+      if (!this.db) return resolve([]);
+
+      const tx = this.db.transaction(STORE_NAME, 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      const request = store.getAll();
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => resolve([]);
     });
   }
 }

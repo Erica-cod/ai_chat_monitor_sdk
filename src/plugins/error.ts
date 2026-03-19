@@ -1,6 +1,5 @@
 import type { MonitorPlugin, MonitorInstance } from '../core/types';
 import { isBrowser, isNode } from '../core/utils';
-import { Monitor } from '../core/monitor';
 
 export interface ErrorPluginOptions {
   /** 忽略匹配的错误消息 */
@@ -21,7 +20,7 @@ export class ErrorPlugin implements MonitorPlugin {
   readonly priority = 50;
 
   private options: ErrorPluginOptions;
-  private monitor: Monitor | null = null;
+  private monitor: MonitorInstance | null = null;
   private onError: ((event: ErrorEvent) => void) | null = null;
   private onRejection: ((event: PromiseRejectionEvent) => void) | null = null;
   private nodeUncaughtHandler: ((err: Error) => void) | null = null;
@@ -32,8 +31,8 @@ export class ErrorPlugin implements MonitorPlugin {
     this.options = options;
   }
 
-  setup(instance: MonitorInstance): void {
-    this.monitor = instance as Monitor;
+  setup(monitor: MonitorInstance): void {
+    this.monitor = monitor;
 
     if (isBrowser()) {
       this.setupBrowser();

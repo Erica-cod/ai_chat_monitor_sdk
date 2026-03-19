@@ -7,6 +7,11 @@ import type { MonitorPlugin, MonitorInstance, MonitorEvent } from './types';
 export class PluginRunner {
   private plugins: MonitorPlugin[] = [];
   private initialized = false;
+  private debug: boolean;
+
+  constructor(debug = false) {
+    this.debug = debug;
+  }
 
   register(plugin: MonitorPlugin): void {
     const exists = this.plugins.some((p) => p.name === plugin.name);
@@ -23,8 +28,10 @@ export class PluginRunner {
     for (const plugin of this.plugins) {
       try {
         plugin.setup(monitor);
-      } catch {
-        // 单个插件初始化失败不影响其他插件
+      } catch (err) {
+        if (this.debug) {
+          console.warn(`[ai-stream-monitor] Plugin "${plugin.name}" setup failed:`, err);
+        }
       }
     }
   }
@@ -33,8 +40,10 @@ export class PluginRunner {
     for (const plugin of [...this.plugins].reverse()) {
       try {
         plugin.teardown?.();
-      } catch {
-        // 静默处理
+      } catch (err) {
+        if (this.debug) {
+          console.warn(`[ai-stream-monitor] Plugin "${plugin.name}" teardown failed:`, err);
+        }
       }
     }
     this.plugins = [];
@@ -55,8 +64,10 @@ export class PluginRunner {
           const result = plugin.processEvent(current);
           if (result === null || result === false) return null;
           current = result;
-        } catch {
-          // 单个钩子异常不阻断管道
+        } catch (err) {
+          if (this.debug) {
+            console.warn(`[ai-stream-monitor] Plugin "${plugin.name}" processEvent error:`, err);
+          }
         }
       }
     }

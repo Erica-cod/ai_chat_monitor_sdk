@@ -70,19 +70,15 @@ export function createAIChatMonitor(config: AIChatMonitorConfig): MonitorInstanc
   // 会话
   monitor.use(new SessionPlugin());
 
-  // 错误监控（默认启用，可通过 error.enabled: false 关闭）
-  const errorEnabled = config.error?.enabled !== false && preset !== 'minimal';
-  const minimalError = preset === 'minimal' && config.error?.enabled !== false;
-
-  if (errorEnabled) {
+  // 错误监控（默认启用，可通过 error.enabled: false 显式关闭）
+  if (config.error?.enabled !== false) {
+    const useFullConfig = preset !== 'minimal';
     monitor.use(
       new ErrorPlugin({
-        ignoreErrors: config.error?.ignoreErrors ?? [/ResizeObserver/],
-        ignoreUrls: config.error?.ignoreUrls ?? [/chrome-extension/],
+        ignoreErrors: config.error?.ignoreErrors ?? (useFullConfig ? [/ResizeObserver/] : undefined),
+        ignoreUrls: config.error?.ignoreUrls ?? (useFullConfig ? [/chrome-extension/] : undefined),
       }),
     );
-  } else if (minimalError) {
-    monitor.use(new ErrorPlugin({ ignoreErrors: config.error?.ignoreErrors }));
   }
 
   // Fetch 拦截（默认不启用，需显式传入 streamPatterns 或设置 enabled: true）
@@ -113,6 +109,7 @@ export function createAIChatMonitor(config: AIChatMonitorConfig): MonitorInstanc
       batchSize: config.transport?.batchSize,
       flushInterval: config.transport?.flushInterval,
       maxRetries: config.transport?.maxRetries,
+      headers: config.transport?.headers,
       customSend: config.transport?.customSend,
     }),
   );

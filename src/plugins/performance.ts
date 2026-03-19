@@ -1,5 +1,4 @@
 import type { MonitorPlugin, MonitorInstance } from '../core/types';
-import { Monitor } from '../core/monitor';
 import { isBrowser } from '../core/utils';
 
 /**
@@ -16,10 +15,8 @@ export class PerformancePlugin implements MonitorPlugin {
 
   private observers: PerformanceObserver[] = [];
 
-  setup(instance: MonitorInstance): void {
+  setup(monitor: MonitorInstance): void {
     if (!isBrowser() || typeof PerformanceObserver === 'undefined') return;
-
-    const monitor = instance as Monitor;
 
     this.observeEntryType(monitor, 'paint', (entry) => {
       if (entry.name === 'first-contentful-paint') {
@@ -82,7 +79,7 @@ export class PerformancePlugin implements MonitorPlugin {
   }
 
   private observeEntryType(
-    _monitor: Monitor,
+    _monitor: MonitorInstance,
     type: string,
     callback: (entry: PerformanceEntry) => void,
   ): void {

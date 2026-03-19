@@ -6,6 +6,11 @@ type Handler = (...args: unknown[]) => void;
  */
 export class EventBus {
   private listeners = new Map<string, Set<Handler>>();
+  private debug: boolean;
+
+  constructor(debug = false) {
+    this.debug = debug;
+  }
 
   on(event: string, handler: Handler): void {
     if (!this.listeners.has(event)) {
@@ -24,8 +29,10 @@ export class EventBus {
     for (const handler of handlers) {
       try {
         handler(...args);
-      } catch {
-        // 插件回调异常不能影响其他订阅者
+      } catch (err) {
+        if (this.debug) {
+          console.warn(`[ai-stream-monitor] EventBus handler error on "${event}":`, err);
+        }
       }
     }
   }

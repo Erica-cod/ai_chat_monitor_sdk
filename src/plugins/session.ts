@@ -9,17 +9,16 @@ interface StoredSession {
   lastActive: number;
 }
 
-/** 内存级 fallback，用于 Node.js / Web Worker 等无 sessionStorage 的环境 */
-const memoryStore = new Map<string, string>();
-
 /**
  * 会话管理插件。
- * 优先使用 sessionStorage；不可用时自动 fallback 到内存 Map。
+ * 优先使用 sessionStorage；不可用时自动 fallback 到实例级内存 Map。
  * 30 分钟无活动自动过期，生成新会话。
  */
 export class SessionPlugin implements MonitorPlugin {
   readonly name = 'session';
   readonly priority = 30;
+
+  private memoryStore = new Map<string, string>();
 
   setup(monitor: MonitorInstance): void {
     const sessionId = this.getOrCreateSession();
@@ -57,7 +56,7 @@ export class SessionPlugin implements MonitorPlugin {
   }
 
   private getFromMemory(): string {
-    const raw = memoryStore.get(SESSION_KEY);
+    const raw = this.memoryStore.get(SESSION_KEY);
     if (raw) {
       try {
         const session: StoredSession = JSON.parse(raw);
@@ -88,12 +87,12 @@ export class SessionPlugin implements MonitorPlugin {
         // 静默
       }
     } else {
-      const raw = memoryStore.get(SESSION_KEY);
+      const raw = this.memoryStore.get(SESSION_KEY);
       if (raw) {
         try {
           const session: StoredSession = JSON.parse(raw);
           session.lastActive = Date.now();
-          memoryStore.set(SESSION_KEY, JSON.stringify(session));
+          this.memoryStore.set(SESSION_KEY, JSON.stringify(session));
         } catch {
           // 静默
         }
@@ -113,7 +112,7 @@ export class SessionPlugin implements MonitorPlugin {
 
   private saveToMemory(id: string): void {
     const session: StoredSession = { id, lastActive: Date.now() };
-    memoryStore.set(SESSION_KEY, JSON.stringify(session));
+    this.memoryStore.set(SESSION_KEY, JSON.stringify(session));
   }
 
   private hasSessionStorage(): boolean {

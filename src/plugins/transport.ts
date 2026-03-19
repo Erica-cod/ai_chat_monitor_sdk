@@ -12,6 +12,8 @@ export interface TransportPluginOptions {
   flushInterval?: number;
   /** 最大重试次数，默认 3 */
   maxRetries?: number;
+  /** 自定义请求头（认证 token、correlation ID 等），仅对 fetch 方式生效 */
+  headers?: Record<string, string>;
   /** 自定义上报函数，传入后跳过内置的 sendBeacon/fetch */
   customSend?: (endpoint: string, payload: string) => void;
 }
@@ -117,13 +119,15 @@ export class TransportPlugin implements MonitorPlugin {
   }
 
   private sendViaBuiltin(payload: string): void {
-    if (!this.sendViaBeacon(payload)) {
-      this.sendViaFetch(payload);
-    }
+    const hasCustomHeaders = this.options.headers && Object.keys(this.options.headers).length > 0;
+    if (!hasCustomHeaders && this.sendViaBeacon(payload)) return;
+    this.sendViaFetch(payload);
   }
 
+  /** sendBeacon 有约 64KB 限制，大负载直接跳过 */
   private sendViaBeacon(payload: string): boolean {
     if (!isBrowser() || typeof navigator.sendBeacon !== 'function') return false;
+    if (payload.length > 60_000) return false;
     try {
       return navigator.sendBeacon(
         this.endpoint,
@@ -139,7 +143,7 @@ export class TransportPlugin implements MonitorPlugin {
 
     fetch(this.endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...this.options.headers },
       body: payload,
       keepalive: true,
     }).catch(() => {
