@@ -115,7 +115,11 @@ export class FetchPlugin implements MonitorPlugin {
     if (this.options.includeUrls && this.options.includeUrls.length > 0) {
       return this.options.includeUrls.some((re) => re.test(url));
     }
-    return true;
+    // 没有 includeUrls 时，只拦截 streamPatterns 匹配的 URL，不再劫持全部请求
+    if (this.options.streamPatterns && this.options.streamPatterns.length > 0) {
+      return this.options.streamPatterns.some((re) => re.test(url));
+    }
+    return false;
   }
 
   private isStreamEndpoint(url: string): boolean {
@@ -134,6 +138,7 @@ export class FetchPlugin implements MonitorPlugin {
    */
   private wrapStreamResponse(response: Response, monitor: Monitor, url: string): Response {
     const body = response.body!;
+    const reader = body.getReader();
     const trace: StreamTrace = monitor.createStreamTrace({
       messageId: `fetch_${Date.now().toString(36)}`,
     });
@@ -143,23 +148,44 @@ export class FetchPlugin implements MonitorPlugin {
     let firstChunkReceived = false;
     let chunkCount = 0;
     let totalBytes = 0;
+    let completed = false;
 
-    const transform = new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        if (!firstChunkReceived) {
-          firstChunkReceived = true;
-          trace.onFirstChunk();
-        }
-        chunkCount++;
-        totalBytes += chunk.byteLength;
-        controller.enqueue(chunk);
-      },
-      flush() {
+    const finalize = (aborted: boolean) => {
+      if (completed) return;
+      completed = true;
+      if (aborted) {
+        trace.abort();
+      } else {
         trace.complete({ chunkCount, totalBytes, url });
+      }
+    };
+
+    const wrappedBody = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        try {
+          const { done, value } = await reader.read();
+          if (done) {
+            finalize(false);
+            controller.close();
+            return;
+          }
+          if (!firstChunkReceived) {
+            firstChunkReceived = true;
+            trace.onFirstChunk();
+          }
+          chunkCount++;
+          totalBytes += value.byteLength;
+          controller.enqueue(value);
+        } catch (err) {
+          finalize(true);
+          controller.error(err);
+        }
+      },
+      cancel() {
+        reader.cancel();
+        finalize(true);
       },
     });
-
-    const wrappedBody = body.pipeThrough(transform);
 
     return new Response(wrappedBody, {
       status: response.status,

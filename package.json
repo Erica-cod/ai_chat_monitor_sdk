@@ -1,6 +1,6 @@
 {
   "name": "ai-stream-monitor",
-  "version": "0.1.0",
+  "version": "0.3.1",
   "description": "Lightweight monitoring SDK for AI chat applications — streaming lifecycle tracing, token usage, TTFT/TTLB/TPS metrics",
   "keywords": [
     "ai",
@@ -18,44 +18,150 @@
   ],
   "license": "MIT",
   "author": "",
-  "type": "module",
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
       },
-      "require": {
-        "types": "./dist/index.d.cts",
-        "default": "./dist/index.cjs"
-      }
+      "default": "./dist/index.js"
     },
     "./react": {
       "import": {
+        "types": "./dist/react.d.mts",
+        "default": "./dist/react.mjs"
+      },
+      "require": {
         "types": "./dist/react.d.ts",
         "default": "./dist/react.js"
       },
-      "require": {
-        "types": "./dist/react.d.cts",
-        "default": "./dist/react.cjs"
-      }
+      "default": "./dist/react.js"
     },
-    "./plugins/*": {
+    "./plugins/error": {
       "import": {
-        "types": "./dist/plugins/*.d.ts",
-        "default": "./dist/plugins/*.js"
+        "types": "./dist/plugins/error.d.mts",
+        "default": "./dist/plugins/error.mjs"
       },
       "require": {
-        "types": "./dist/plugins/*.d.cts",
-        "default": "./dist/plugins/*.cjs"
-      }
+        "types": "./dist/plugins/error.d.ts",
+        "default": "./dist/plugins/error.js"
+      },
+      "default": "./dist/plugins/error.js"
+    },
+    "./plugins/fetch": {
+      "import": {
+        "types": "./dist/plugins/fetch.d.mts",
+        "default": "./dist/plugins/fetch.mjs"
+      },
+      "require": {
+        "types": "./dist/plugins/fetch.d.ts",
+        "default": "./dist/plugins/fetch.js"
+      },
+      "default": "./dist/plugins/fetch.js"
+    },
+    "./plugins/transport": {
+      "import": {
+        "types": "./dist/plugins/transport.d.mts",
+        "default": "./dist/plugins/transport.mjs"
+      },
+      "require": {
+        "types": "./dist/plugins/transport.d.ts",
+        "default": "./dist/plugins/transport.js"
+      },
+      "default": "./dist/plugins/transport.js"
+    },
+    "./plugins/session": {
+      "import": {
+        "types": "./dist/plugins/session.d.mts",
+        "default": "./dist/plugins/session.mjs"
+      },
+      "require": {
+        "types": "./dist/plugins/session.d.ts",
+        "default": "./dist/plugins/session.js"
+      },
+      "default": "./dist/plugins/session.js"
+    },
+    "./plugins/sampling": {
+      "import": {
+        "types": "./dist/plugins/sampling.d.mts",
+        "default": "./dist/plugins/sampling.mjs"
+      },
+      "require": {
+        "types": "./dist/plugins/sampling.d.ts",
+        "default": "./dist/plugins/sampling.js"
+      },
+      "default": "./dist/plugins/sampling.js"
+    },
+    "./plugins/dedupe": {
+      "import": {
+        "types": "./dist/plugins/dedupe.d.mts",
+        "default": "./dist/plugins/dedupe.mjs"
+      },
+      "require": {
+        "types": "./dist/plugins/dedupe.d.ts",
+        "default": "./dist/plugins/dedupe.js"
+      },
+      "default": "./dist/plugins/dedupe.js"
+    },
+    "./plugins/performance": {
+      "import": {
+        "types": "./dist/plugins/performance.d.mts",
+        "default": "./dist/plugins/performance.mjs"
+      },
+      "require": {
+        "types": "./dist/plugins/performance.d.ts",
+        "default": "./dist/plugins/performance.js"
+      },
+      "default": "./dist/plugins/performance.js"
+    },
+    "./plugins/sse-trace": {
+      "import": {
+        "types": "./dist/plugins/sse-trace.d.mts",
+        "default": "./dist/plugins/sse-trace.mjs"
+      },
+      "require": {
+        "types": "./dist/plugins/sse-trace.d.ts",
+        "default": "./dist/plugins/sse-trace.js"
+      },
+      "default": "./dist/plugins/sse-trace.js"
+    },
+    "./plugins/offline-queue": {
+      "import": {
+        "types": "./dist/plugins/offline-queue.d.mts",
+        "default": "./dist/plugins/offline-queue.mjs"
+      },
+      "require": {
+        "types": "./dist/plugins/offline-queue.d.ts",
+        "default": "./dist/plugins/offline-queue.js"
+      },
+      "default": "./dist/plugins/offline-queue.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "react": ["./dist/react.d.ts"],
+      "plugins/error": ["./dist/plugins/error.d.ts"],
+      "plugins/fetch": ["./dist/plugins/fetch.d.ts"],
+      "plugins/transport": ["./dist/plugins/transport.d.ts"],
+      "plugins/session": ["./dist/plugins/session.d.ts"],
+      "plugins/sampling": ["./dist/plugins/sampling.d.ts"],
+      "plugins/dedupe": ["./dist/plugins/dedupe.d.ts"],
+      "plugins/performance": ["./dist/plugins/performance.d.ts"],
+      "plugins/sse-trace": ["./dist/plugins/sse-trace.d.ts"],
+      "plugins/offline-queue": ["./dist/plugins/offline-queue.d.ts"]
     }
   },
   "files": [
     "dist",
+    "react",
+    "plugins",
     "README.md",
     "LICENSE"
   ],

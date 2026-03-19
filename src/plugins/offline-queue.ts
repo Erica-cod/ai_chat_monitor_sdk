@@ -28,6 +28,7 @@ export class OfflineQueuePlugin implements MonitorPlugin {
   private db: IDBDatabase | null = null;
   private monitor: MonitorInstance | null = null;
   private retryTimer: ReturnType<typeof setInterval> | null = null;
+  private onOnline: (() => void) | null = null;
 
   constructor(options: OfflineQueuePluginOptions = {}) {
     this.options = {
@@ -42,10 +43,17 @@ export class OfflineQueuePlugin implements MonitorPlugin {
     if (!isBrowser() || typeof indexedDB === 'undefined') return;
     this.monitor = monitor;
 
+    monitor.on('transport:failed', (events: unknown) => {
+      if (Array.isArray(events)) {
+        this.enqueue(events as MonitorEvent[]);
+      }
+    });
+
     this.openDB().then(() => {
       this.retryTimer = setInterval(() => this.flushQueue(), this.options.retryInterval);
 
-      window.addEventListener('online', () => this.flushQueue());
+      this.onOnline = () => this.flushQueue();
+      window.addEventListener('online', this.onOnline);
 
       this.flushQueue();
     });
@@ -53,6 +61,9 @@ export class OfflineQueuePlugin implements MonitorPlugin {
 
   teardown(): void {
     if (this.retryTimer !== null) clearInterval(this.retryTimer);
+    if (this.onOnline && typeof window !== 'undefined') {
+      window.removeEventListener('online', this.onOnline);
+    }
     this.db?.close();
     this.db = null;
   }

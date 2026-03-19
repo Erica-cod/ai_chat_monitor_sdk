@@ -9,6 +9,8 @@ export interface DedupePluginOptions {
  * 事件去重插件。
  * 在指定时间窗口内，相同 type + 相同关键 data 的事件只上报一次。
  * 避免短时间内重复触发（如连续的相同错误）。
+ *
+ * 通过 processEvent 钩子实现过滤，不再 monkey-patch monitor.emit。
  */
 export class DedupePlugin implements MonitorPlugin {
   readonly name = 'dedupe';
@@ -22,24 +24,21 @@ export class DedupePlugin implements MonitorPlugin {
     this.windowMs = options.windowMs ?? 5000;
   }
 
-  setup(monitor: MonitorInstance): void {
-    const monitorAny = monitor as { emit: (event: MonitorEvent) => void };
-    const originalEmit = monitorAny.emit.bind(monitor);
-
-    monitorAny.emit = (event: MonitorEvent) => {
-      const key = this.eventKey(event);
-      const lastSeen = this.recent.get(key);
-      const now = Date.now();
-
-      if (lastSeen && now - lastSeen < this.windowMs) {
-        return; // 去重：跳过
-      }
-
-      this.recent.set(key, now);
-      originalEmit(event);
-    };
-
+  setup(_monitor: MonitorInstance): void {
     this.cleanupTimer = setInterval(() => this.cleanup(), this.windowMs * 2);
+  }
+
+  processEvent(event: MonitorEvent): MonitorEvent | null {
+    const key = this.eventKey(event);
+    const lastSeen = this.recent.get(key);
+    const t = Date.now();
+
+    if (lastSeen && t - lastSeen < this.windowMs) {
+      return null;
+    }
+
+    this.recent.set(key, t);
+    return event;
   }
 
   teardown(): void {

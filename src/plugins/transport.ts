@@ -30,6 +30,8 @@ export class TransportPlugin implements MonitorPlugin {
   private buffer: MonitorEvent[] = [];
   private timer: ReturnType<typeof setInterval> | null = null;
   private onBeforeUnload: (() => void) | null = null;
+  private onVisibilityChange: (() => void) | null = null;
+  private monitor: MonitorInstance | null = null;
 
   constructor(options: TransportPluginOptions = {}) {
     this.options = {
@@ -42,6 +44,7 @@ export class TransportPlugin implements MonitorPlugin {
   }
 
   setup(monitor: MonitorInstance): void {
+    this.monitor = monitor;
     this.endpoint = this.options.endpoint ?? monitor.config.endpoint;
 
     monitor.on('event', (event: unknown) => {
@@ -57,10 +60,11 @@ export class TransportPlugin implements MonitorPlugin {
 
       if (isBrowser()) {
         this.onBeforeUnload = () => this.flush();
-        window.addEventListener('beforeunload', this.onBeforeUnload);
-        document.addEventListener('visibilitychange', () => {
+        this.onVisibilityChange = () => {
           if (document.visibilityState === 'hidden') this.flush();
-        });
+        };
+        window.addEventListener('beforeunload', this.onBeforeUnload);
+        document.addEventListener('visibilitychange', this.onVisibilityChange);
       }
     }
   }
@@ -68,8 +72,13 @@ export class TransportPlugin implements MonitorPlugin {
   teardown(): void {
     this.flush();
     if (this.timer !== null) clearInterval(this.timer);
-    if (this.onBeforeUnload && isBrowser()) {
-      window.removeEventListener('beforeunload', this.onBeforeUnload);
+    if (isBrowser()) {
+      if (this.onBeforeUnload) {
+        window.removeEventListener('beforeunload', this.onBeforeUnload);
+      }
+      if (this.onVisibilityChange) {
+        document.removeEventListener('visibilitychange', this.onVisibilityChange);
+      }
     }
   }
 
@@ -136,7 +145,19 @@ export class TransportPlugin implements MonitorPlugin {
     }).catch(() => {
       if (retries < this.options.maxRetries!) {
         setTimeout(() => this.sendViaFetch(payload, retries + 1), 1000 * 2 ** retries);
+      } else {
+        this.emitFailed(payload);
       }
     });
+  }
+
+  private emitFailed(payload: string): void {
+    if (!this.monitor) return;
+    try {
+      const events = JSON.parse(payload) as MonitorEvent[];
+      this.monitor.signal('transport:failed', events);
+    } catch {
+      // 静默
+    }
   }
 }

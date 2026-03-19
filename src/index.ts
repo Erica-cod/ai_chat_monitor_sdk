@@ -6,6 +6,7 @@ export type {
   MonitorContext,
   MonitorEvent,
   MonitorEventType,
+  BuiltinEventType,
   MonitorInstance,
   MonitorPlugin,
   StreamTrace,
@@ -34,5 +35,6 @@ export { FetchPlugin } from './plugins/fetch';
 export type { FetchPluginOptions } from './plugins/fetch';
 export { PerformancePlugin } from './plugins/performance';
 export { SSEAutoPlugin } from './plugins/sse-trace';
+export type { SSEAutoPluginOptions } from './plugins/sse-trace';
 export { OfflineQueuePlugin } from './plugins/offline-queue';
 export type { OfflineQueuePluginOptions } from './plugins/offline-queue';

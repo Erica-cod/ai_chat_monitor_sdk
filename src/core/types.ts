@@ -1,5 +1,5 @@
-/** 监控事件类型 */
-export type MonitorEventType =
+/** 内置监控事件类型 */
+export type BuiltinEventType =
   | 'js_error'
   | 'promise_error'
   | 'http_request'
@@ -14,6 +14,12 @@ export type MonitorEventType =
   | 'session_start'
   | 'session_end'
   | 'custom';
+
+/**
+ * 监控事件类型。
+ * 包含所有内置类型，同时允许自定义扩展（如 `'my_plugin_event'`）。
+ */
+export type MonitorEventType = BuiltinEventType | (string & {});
 
 /** 监控事件通用结构 */
 export interface MonitorEvent {
@@ -60,6 +66,14 @@ export interface MonitorPlugin {
   setup(monitor: MonitorInstance): void;
   /** 插件销毁 */
   teardown?(): void;
+  /**
+   * 事件管道钩子，按 priority 顺序依次调用。
+   * - 返回修改后的 MonitorEvent → 事件继续流经后续插件
+   * - 返回 null / false → 丢弃事件（用于采样、去重）
+   *
+   * 类似 Sentry 的 `processEvent`。
+   */
+  processEvent?(event: MonitorEvent): MonitorEvent | null | false;
 }
 
 /** Monitor 实例对外暴露的接口 */
@@ -85,6 +99,8 @@ export interface MonitorInstance {
   on(event: string, handler: (...args: unknown[]) => void): void;
   /** 取消订阅 */
   off(event: string, handler: (...args: unknown[]) => void): void;
+  /** 发射内部信号（不经过 processEvent 管道，用于插件间通信） */
+  signal(name: string, data?: unknown): void;
   /** 销毁 SDK，移除所有监听和插件 */
   destroy(): void;
 }
@@ -175,11 +191,19 @@ export interface AIChatMonitorConfig extends MonitorConfig {
   };
   /** 错误监控配置 */
   error?: {
+    /** 是否启用错误监控，默认 true */
+    enabled?: boolean;
     ignoreErrors?: RegExp[];
     ignoreUrls?: RegExp[];
   };
-  /** Fetch 拦截配置 */
+  /**
+   * Fetch 拦截配置。
+   * 注意：启用后会劫持全局 fetch，可能影响 OIDC 登录等依赖原生 fetch 的流程。
+   * 默认不启用，需显式传入 streamPatterns 或设置 enabled: true。
+   */
   fetch?: {
+    /** 是否启用 Fetch 拦截，默认 false（传入 streamPatterns 时自动启用） */
+    enabled?: boolean;
     includeUrls?: RegExp[];
     excludeUrls?: RegExp[];
     /** 匹配的 URL 会被视为 AI 流式端点，自动创建 StreamTrace */
@@ -187,4 +211,9 @@ export interface AIChatMonitorConfig extends MonitorConfig {
   };
   /** 去重窗口（毫秒） */
   dedupeWindow?: number;
+  /**
+   * 事件上报前的全局钩子（类似 Sentry 的 beforeSend）。
+   * 可用于数据脱敏、过滤、增强。返回 null 则丢弃该事件。
+   */
+  beforeSend?: (event: MonitorEvent) => MonitorEvent | null;
 }

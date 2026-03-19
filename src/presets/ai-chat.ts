@@ -43,12 +43,15 @@ export function createAIChatMonitor(config: AIChatMonitorConfig): MonitorInstanc
   const isDev = isDevMode();
   const preset = config.preset ?? (isDev ? 'development' : 'production');
 
-  const monitor = new Monitor({
-    appId: config.appId,
-    endpoint: config.endpoint,
-    debug: config.debug ?? (preset === 'development'),
-    version: config.version,
-  });
+  const monitor = new Monitor(
+    {
+      appId: config.appId,
+      endpoint: config.endpoint,
+      debug: config.debug ?? (preset === 'development'),
+      version: config.version,
+    },
+    config.beforeSend,
+  );
 
   // 采样
   const samplingRate =
@@ -66,16 +69,31 @@ export function createAIChatMonitor(config: AIChatMonitorConfig): MonitorInstanc
   // 会话
   monitor.use(new SessionPlugin());
 
-  if (preset !== 'minimal') {
-    // 错误监控
+  // 错误监控（默认启用，可通过 error.enabled: false 关闭）
+  const errorEnabled = config.error?.enabled !== false && preset !== 'minimal';
+  const minimalError = preset === 'minimal' && config.error?.enabled !== false;
+
+  if (errorEnabled) {
     monitor.use(
       new ErrorPlugin({
         ignoreErrors: config.error?.ignoreErrors ?? [/ResizeObserver/],
         ignoreUrls: config.error?.ignoreUrls ?? [/chrome-extension/],
       }),
     );
+  } else if (minimalError) {
+    monitor.use(new ErrorPlugin({ ignoreErrors: config.error?.ignoreErrors }));
+  }
 
-    // Fetch 拦截（含流式自动追踪）
+  // Fetch 拦截（默认不启用，需显式传入 streamPatterns 或设置 enabled: true）
+  // 劫持全局 fetch 具有破坏性（会影响 OIDC 登录、CSRF 请求等），因此改为 opt-in。
+  const fetchEnabled =
+    preset !== 'minimal' &&
+    config.fetch?.enabled !== false &&
+    (config.fetch?.enabled === true ||
+      (config.fetch?.streamPatterns && config.fetch.streamPatterns.length > 0) ||
+      (config.fetch?.includeUrls && config.fetch.includeUrls.length > 0));
+
+  if (fetchEnabled) {
     monitor.use(
       new FetchPlugin({
         includeUrls: config.fetch?.includeUrls,
@@ -83,9 +101,6 @@ export function createAIChatMonitor(config: AIChatMonitorConfig): MonitorInstanc
         streamPatterns: config.fetch?.streamPatterns,
       }),
     );
-  } else {
-    // minimal 模式只有错误
-    monitor.use(new ErrorPlugin({ ignoreErrors: config.error?.ignoreErrors }));
   }
 
   // 传输

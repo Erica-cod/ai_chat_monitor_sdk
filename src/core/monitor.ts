@@ -19,6 +19,9 @@ const DEFAULT_CONFIG: Omit<Required<MonitorConfig>, 'appId'> = {
   version: '',
 };
 
+/** beforeSend 回调类型 */
+type BeforeSendFn = (event: MonitorEvent) => MonitorEvent | null;
+
 /**
  * Monitor 核心类。
  *
@@ -31,12 +34,14 @@ export class Monitor implements MonitorInstance {
   private ctxManager: ContextManager;
   private runner: PluginRunner;
   private destroyed = false;
+  private beforeSendFn: BeforeSendFn | null = null;
 
-  constructor(config: MonitorConfig) {
+  constructor(config: MonitorConfig, beforeSend?: BeforeSendFn) {
     this.config = { ...DEFAULT_CONFIG, ...config } as Required<MonitorConfig>;
     this.bus = new EventBus();
     this.ctxManager = new ContextManager(this.config);
     this.runner = new PluginRunner();
+    this.beforeSendFn = beforeSend ?? null;
   }
 
   get context(): MonitorContext {
@@ -61,8 +66,21 @@ export class Monitor implements MonitorInstance {
 
   emit(event: MonitorEvent): void {
     if (this.destroyed) return;
-    this.bus.emit('event', event);
-    this.log('Event emitted', { type: event.type, id: event.id });
+
+    let processed = this.runner.runProcessEvent(event);
+    if (!processed) return;
+
+    if (this.beforeSendFn) {
+      try {
+        processed = this.beforeSendFn(processed);
+      } catch {
+        // beforeSend 异常不影响管道
+      }
+      if (!processed) return;
+    }
+
+    this.bus.emit('event', processed);
+    this.log('Event emitted', { type: processed.type, id: processed.id });
   }
 
   send(events: MonitorEvent[]): void {
@@ -100,6 +118,11 @@ export class Monitor implements MonitorInstance {
 
   off(event: string, handler: (...args: unknown[]) => void): void {
     this.bus.off(event, handler);
+  }
+
+  signal(name: string, data?: unknown): void {
+    if (this.destroyed) return;
+    this.bus.emit(name, data);
   }
 
   destroy(): void {

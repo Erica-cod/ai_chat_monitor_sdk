@@ -117,8 +117,8 @@ export class ErrorPlugin implements MonitorPlugin {
       );
     };
 
-    process.on('uncaughtException', this.nodeUncaughtHandler);
-    process.on('unhandledRejection', this.nodeRejectionHandler);
+    process.prependListener('uncaughtException', this.nodeUncaughtHandler);
+    process.prependListener('unhandledRejection', this.nodeRejectionHandler);
   }
 
   private setupConsoleCapture(): void {

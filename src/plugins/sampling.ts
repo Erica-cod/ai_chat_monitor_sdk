@@ -13,6 +13,8 @@ export interface SamplingPluginOptions {
  * 采样插件。
  * 基于会话级采样决策 + 按事件类型差异化采样。
  * 一旦决定采样当前会话，整个会话内所有事件都会被采集（保证一致性）。
+ *
+ * 通过 beforeEmit 钩子实现过滤，不再 monkey-patch monitor.emit。
  */
 export class SamplingPlugin implements MonitorPlugin {
   readonly name = 'sampling';
@@ -30,27 +32,12 @@ export class SamplingPlugin implements MonitorPlugin {
     this.sessionSampled = Math.random() < this.options.rate;
   }
 
-  setup(monitor: MonitorInstance): void {
-    const originalEmit = monitor.emit.bind(monitor);
+  setup(_monitor: MonitorInstance): void {
+    // 采样逻辑已迁移到 beforeEmit，setup 无需额外操作
+  }
 
-    // 拦截 event 事件，根据采样策略决定是否放行
-    monitor.on('event', (...args: unknown[]) => {
-      // 采样逻辑由事件总线管道处理，这里通过 event-filter 通知后续插件
-      const event = args[0] as MonitorEvent;
-      if (!this.shouldSample(event)) {
-        // 阻止事件继续传播：不做任何事，事件不会到达 transport
-        return;
-      }
-    });
-
-    // 重写 emit 增加采样过滤
-    const self = this;
-    const monitorAny = monitor as { emit: typeof originalEmit };
-    const parentEmit = monitorAny.emit;
-    monitorAny.emit = function (event: MonitorEvent) {
-      if (!self.shouldSample(event)) return;
-      parentEmit(event);
-    };
+  processEvent(event: MonitorEvent): MonitorEvent | null {
+    return this.shouldSample(event) ? event : null;
   }
 
   private shouldSample(event: MonitorEvent): boolean {

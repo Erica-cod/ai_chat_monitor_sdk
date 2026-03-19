@@ -1,8 +1,8 @@
-import type { MonitorPlugin, MonitorInstance } from './types';
+import type { MonitorPlugin, MonitorInstance, MonitorEvent } from './types';
 
 /**
  * 插件管理器。
- * 负责注册、按 priority 排序、批量初始化和销毁插件。
+ * 负责注册、按 priority 排序、批量初始化/销毁插件，以及运行事件管道。
  */
 export class PluginRunner {
   private plugins: MonitorPlugin[] = [];
@@ -39,6 +39,29 @@ export class PluginRunner {
     }
     this.plugins = [];
     this.initialized = false;
+  }
+
+  /**
+   * 按 priority 顺序依次调用插件的 processEvent 钩子。
+   * 任意插件返回 null/false 即终止管道；返回修改后的 event 则继续传递。
+   */
+  runProcessEvent(event: MonitorEvent): MonitorEvent | null {
+    let current: MonitorEvent | null = event;
+
+    for (const plugin of this.plugins) {
+      if (!current) return null;
+      if (plugin.processEvent) {
+        try {
+          const result = plugin.processEvent(current);
+          if (result === null || result === false) return null;
+          current = result;
+        } catch {
+          // 单个钩子异常不阻断管道
+        }
+      }
+    }
+
+    return current;
   }
 
   getPluginNames(): string[] {
