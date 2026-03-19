@@ -2,16 +2,15 @@
 export type MonitorEventType =
   | 'js_error'
   | 'promise_error'
-  | 'resource_error'
   | 'http_request'
   | 'web_vital'
-  | 'sse_start'
-  | 'sse_first_chunk'
-  | 'sse_phase'
-  | 'sse_tool_call'
-  | 'sse_stall'
-  | 'sse_complete'
-  | 'sse_error'
+  | 'stream_start'
+  | 'stream_first_token'
+  | 'stream_phase'
+  | 'stream_tool_call'
+  | 'stream_stall'
+  | 'stream_complete'
+  | 'stream_error'
   | 'session_start'
   | 'session_end'
   | 'custom';
@@ -76,8 +75,12 @@ export interface MonitorInstance {
   send(events: MonitorEvent[]): void;
   /** 更新全局上下文 */
   setContext(partial: Partial<MonitorContext>): void;
-  /** 创建 SSE 追踪实例 */
-  createSSETrace(options: SSETraceOptions): SSETrace;
+  /** 创建流式追踪实例 */
+  createStreamTrace(options: StreamTraceOptions): StreamTrace;
+  /**
+   * @deprecated 请使用 createStreamTrace()
+   */
+  createSSETrace(options: StreamTraceOptions): StreamTrace;
   /** 订阅内部事件 */
   on(event: string, handler: (...args: unknown[]) => void): void;
   /** 取消订阅 */
@@ -86,24 +89,42 @@ export interface MonitorInstance {
   destroy(): void;
 }
 
-/** SSE 追踪配置 */
-export interface SSETraceOptions {
+/** 流式追踪配置 */
+export interface StreamTraceOptions {
   /** AI 消息 ID（必填，用于关联上下文） */
   messageId: string;
+  /** 模型名称（如 gpt-4o, doubao-pro） */
+  model?: string;
+  /** 模型供应商（如 openai, bytedance） */
+  provider?: string;
   /** 重试时的前一个 traceId */
   previousTraceId?: string;
   /** 卡顿检测阈值（毫秒），默认 5000 */
   stallThreshold?: number;
 }
 
-/** SSE 追踪实例 */
-export interface SSETrace {
+/** 流式响应的结果摘要 */
+export interface StreamResult {
+  /** 输入 token 数 */
+  promptTokens?: number;
+  /** 输出 token 数 */
+  completionTokens?: number;
+  /** 总 token 数（不传则自动计算 promptTokens + completionTokens） */
+  totalTokens?: number;
+  /** 模型名称（覆盖 options 中的值） */
+  model?: string;
+  /** 允许附加自定义字段 */
+  [key: string]: unknown;
+}
+
+/** 流式追踪实例 */
+export interface StreamTrace {
   readonly traceId: string;
   readonly messageId: string;
 
-  /** SSE 请求开始 */
+  /** 流式请求开始 */
   start(): void;
-  /** 收到首个 chunk → 计算 TTFB */
+  /** 收到首个 token → 计算 TTFT */
   onFirstChunk(): void;
   /** 阶段开始/结束（如 thinking, generating） */
   onPhase(phase: string, action: 'start' | 'end'): void;
@@ -111,13 +132,18 @@ export interface SSETrace {
   onToolCall(toolName: string, params?: Record<string, unknown>): void;
   /** Tool Calling 结束 */
   onToolResult(toolName: string, result?: Record<string, unknown>): void;
-  /** SSE 正常完成 → 计算 TTLB */
-  complete(meta?: Record<string, unknown>): void;
-  /** SSE 异常 */
+  /** 流式正常完成 → 计算 TTLB / TPS */
+  complete(result?: StreamResult): void;
+  /** 流式异常 */
   error(err: Error | string): void;
   /** 手动中止 */
   abort(): void;
 }
+
+/** @deprecated 请使用 StreamTraceOptions */
+export type SSETraceOptions = StreamTraceOptions;
+/** @deprecated 请使用 StreamTrace */
+export type SSETrace = StreamTrace;
 
 /** 传输层接口 */
 export interface TransportSendFn {
@@ -139,6 +165,8 @@ export interface AIChatMonitorConfig extends MonitorConfig {
     batchSize?: number;
     flushInterval?: number;
     maxRetries?: number;
+    /** 自定义上报函数，传入则跳过内置的 sendBeacon/fetch */
+    customSend?: (endpoint: string, payload: string) => void;
   };
   /** 采样配置 */
   sampling?: {
@@ -154,6 +182,8 @@ export interface AIChatMonitorConfig extends MonitorConfig {
   fetch?: {
     includeUrls?: RegExp[];
     excludeUrls?: RegExp[];
+    /** 匹配的 URL 会被视为 AI 流式端点，自动创建 StreamTrace */
+    streamPatterns?: RegExp[];
   };
   /** 去重窗口（毫秒） */
   dedupeWindow?: number;

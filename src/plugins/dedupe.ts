@@ -52,10 +52,10 @@ export class DedupePlugin implements MonitorPlugin {
     const sig =
       type === 'js_error' || type === 'promise_error'
         ? String(data.message ?? '')
-        : type === 'resource_error'
-          ? String(data.src ?? '')
-          : type === 'http_request'
-            ? `${data.method}:${data.url}`
+        : type === 'http_request'
+          ? `${data.method}:${data.url}`
+          : type === 'stream_error'
+            ? `${data.traceId}:${data.message}`
             : type;
     return `${type}::${sig}`;
   }

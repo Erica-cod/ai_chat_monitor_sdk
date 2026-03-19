@@ -8,8 +8,9 @@ import type {
   MonitorEvent,
   MonitorInstance,
   MonitorPlugin,
-  SSETrace,
-  SSETraceOptions,
+  StreamTrace,
+  StreamTraceOptions,
+  StreamResult,
 } from './types';
 
 const DEFAULT_CONFIG: Omit<Required<MonitorConfig>, 'appId'> = {
@@ -73,8 +74,13 @@ export class Monitor implements MonitorInstance {
     this.ctxManager.update(partial);
   }
 
-  createSSETrace(options: SSETraceOptions): SSETrace {
-    return new SSETraceImpl(this, options);
+  createStreamTrace(options: StreamTraceOptions): StreamTrace {
+    return new StreamTraceImpl(this, options);
+  }
+
+  /** @deprecated 请使用 createStreamTrace() */
+  createSSETrace(options: StreamTraceOptions): StreamTrace {
+    return this.createStreamTrace(options);
   }
 
   /** 创建一个带有上下文的监控事件 */
@@ -112,14 +118,16 @@ export class Monitor implements MonitorInstance {
 }
 
 /**
- * SSE 追踪实例。
- * 追踪一次 SSE 流式响应的完整生命周期。
+ * 流式追踪实例。
+ * 追踪一次 AI 流式响应的完整生命周期，支持 TTFT、TTLB、TPS、token 统计。
  */
-class SSETraceImpl implements SSETrace {
+class StreamTraceImpl implements StreamTrace {
   readonly traceId: string;
   readonly messageId: string;
 
   private monitor: Monitor;
+  private model?: string;
+  private provider?: string;
   private stallThreshold: number;
   private previousTraceId?: string;
   private startTime = 0;
@@ -129,12 +137,25 @@ class SSETraceImpl implements SSETrace {
   private phases: Map<string, number> = new Map();
   private ended = false;
 
-  constructor(monitor: Monitor, options: SSETraceOptions) {
+  constructor(monitor: Monitor, options: StreamTraceOptions) {
     this.monitor = monitor;
     this.traceId = uid();
     this.messageId = options.messageId;
+    this.model = options.model;
+    this.provider = options.provider;
     this.stallThreshold = options.stallThreshold ?? 5000;
     this.previousTraceId = options.previousTraceId;
+  }
+
+  /** 每个事件都携带的公共字段 */
+  private baseData(): Record<string, unknown> {
+    const d: Record<string, unknown> = {
+      traceId: this.traceId,
+      messageId: this.messageId,
+    };
+    if (this.model) d.model = this.model;
+    if (this.provider) d.provider = this.provider;
+    return d;
   }
 
   start(): void {
@@ -143,9 +164,8 @@ class SSETraceImpl implements SSETrace {
     this.resetStallTimer();
 
     this.monitor.emit(
-      this.monitor.createEvent('sse_start', {
-        traceId: this.traceId,
-        messageId: this.messageId,
+      this.monitor.createEvent('stream_start', {
+        ...this.baseData(),
         previousTraceId: this.previousTraceId,
       }),
     );
@@ -156,12 +176,11 @@ class SSETraceImpl implements SSETrace {
     this.lastChunkTime = this.firstChunkTime;
     this.resetStallTimer();
 
-    const ttfb = this.firstChunkTime - this.startTime;
+    const ttft = this.firstChunkTime - this.startTime;
     this.monitor.emit(
-      this.monitor.createEvent('sse_first_chunk', {
-        traceId: this.traceId,
-        messageId: this.messageId,
-        ttfb,
+      this.monitor.createEvent('stream_first_token', {
+        ...this.baseData(),
+        ttft,
       }),
     );
   }
@@ -172,8 +191,7 @@ class SSETraceImpl implements SSETrace {
     this.resetStallTimer();
 
     const data: Record<string, unknown> = {
-      traceId: this.traceId,
-      messageId: this.messageId,
+      ...this.baseData(),
       phase,
       action,
     };
@@ -188,7 +206,7 @@ class SSETraceImpl implements SSETrace {
       }
     }
 
-    this.monitor.emit(this.monitor.createEvent('sse_phase', data));
+    this.monitor.emit(this.monitor.createEvent('stream_phase', data));
   }
 
   onToolCall(toolName: string, params?: Record<string, unknown>): void {
@@ -196,9 +214,8 @@ class SSETraceImpl implements SSETrace {
     this.resetStallTimer();
 
     this.monitor.emit(
-      this.monitor.createEvent('sse_tool_call', {
-        traceId: this.traceId,
-        messageId: this.messageId,
+      this.monitor.createEvent('stream_tool_call', {
+        ...this.baseData(),
         toolName,
         action: 'start',
         params,
@@ -211,9 +228,8 @@ class SSETraceImpl implements SSETrace {
     this.resetStallTimer();
 
     this.monitor.emit(
-      this.monitor.createEvent('sse_tool_call', {
-        traceId: this.traceId,
-        messageId: this.messageId,
+      this.monitor.createEvent('stream_tool_call', {
+        ...this.baseData(),
         toolName,
         action: 'end',
         result,
@@ -221,22 +237,41 @@ class SSETraceImpl implements SSETrace {
     );
   }
 
-  complete(meta?: Record<string, unknown>): void {
+  complete(result?: StreamResult): void {
     if (this.ended) return;
     this.ended = true;
     this.clearStallTimer();
 
     const completeTime = now();
     const ttlb = completeTime - this.startTime;
-    const ttfb = this.firstChunkTime ? this.firstChunkTime - this.startTime : undefined;
+    const ttft = this.firstChunkTime ? this.firstChunkTime - this.startTime : undefined;
+    const generationDuration = this.firstChunkTime ? completeTime - this.firstChunkTime : undefined;
+
+    const totalTokens =
+      result?.totalTokens ??
+      (result?.promptTokens != null && result?.completionTokens != null
+        ? result.promptTokens + result.completionTokens
+        : undefined);
+
+    const tps =
+      result?.completionTokens && generationDuration && generationDuration > 0
+        ? Math.round((result.completionTokens / generationDuration) * 1000 * 100) / 100
+        : undefined;
+
+    const { promptTokens, completionTokens, model, ...extraMeta } = result ?? {};
 
     this.monitor.emit(
-      this.monitor.createEvent('sse_complete', {
-        traceId: this.traceId,
-        messageId: this.messageId,
-        ttfb,
+      this.monitor.createEvent('stream_complete', {
+        ...this.baseData(),
+        ttft,
         ttlb,
-        ...meta,
+        generationDuration,
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        tps,
+        ...(model && { model }),
+        ...extraMeta,
       }),
     );
   }
@@ -248,9 +283,8 @@ class SSETraceImpl implements SSETrace {
 
     const errorTime = now();
     this.monitor.emit(
-      this.monitor.createEvent('sse_error', {
-        traceId: this.traceId,
-        messageId: this.messageId,
+      this.monitor.createEvent('stream_error', {
+        ...this.baseData(),
         message: err instanceof Error ? err.message : err,
         stack: err instanceof Error ? err.stack : undefined,
         elapsed: errorTime - this.startTime,
@@ -264,9 +298,8 @@ class SSETraceImpl implements SSETrace {
     this.clearStallTimer();
 
     this.monitor.emit(
-      this.monitor.createEvent('sse_complete', {
-        traceId: this.traceId,
-        messageId: this.messageId,
+      this.monitor.createEvent('stream_complete', {
+        ...this.baseData(),
         aborted: true,
         elapsed: now() - this.startTime,
       }),
@@ -281,9 +314,8 @@ class SSETraceImpl implements SSETrace {
       if (this.ended) return;
       const stallDuration = now() - this.lastChunkTime;
       this.monitor.emit(
-        this.monitor.createEvent('sse_stall', {
-          traceId: this.traceId,
-          messageId: this.messageId,
+        this.monitor.createEvent('stream_stall', {
+          ...this.baseData(),
           stallDuration,
           threshold: this.stallThreshold,
         }),

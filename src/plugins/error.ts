@@ -1,5 +1,5 @@
 import type { MonitorPlugin, MonitorInstance } from '../core/types';
-import { isBrowser } from '../core/utils';
+import { isBrowser, isNode } from '../core/utils';
 import { Monitor } from '../core/monitor';
 
 export interface ErrorPluginOptions {
@@ -13,7 +13,8 @@ export interface ErrorPluginOptions {
 
 /**
  * 错误监控插件。
- * 自动捕获 JS 运行时错误、未处理的 Promise 拒绝、资源加载失败。
+ * 浏览器：捕获 JS 运行时错误、未处理的 Promise 拒绝。
+ * Node.js：捕获 uncaughtException、unhandledRejection。
  */
 export class ErrorPlugin implements MonitorPlugin {
   readonly name = 'error';
@@ -23,6 +24,8 @@ export class ErrorPlugin implements MonitorPlugin {
   private monitor: Monitor | null = null;
   private onError: ((event: ErrorEvent) => void) | null = null;
   private onRejection: ((event: PromiseRejectionEvent) => void) | null = null;
+  private nodeUncaughtHandler: ((err: Error) => void) | null = null;
+  private nodeRejectionHandler: ((reason: unknown) => void) | null = null;
   private originalConsoleError: typeof console.error | null = null;
 
   constructor(options: ErrorPluginOptions = {}) {
@@ -30,31 +33,45 @@ export class ErrorPlugin implements MonitorPlugin {
   }
 
   setup(instance: MonitorInstance): void {
-    if (!isBrowser()) return;
     this.monitor = instance as Monitor;
 
+    if (isBrowser()) {
+      this.setupBrowser();
+    } else if (isNode()) {
+      this.setupNode();
+    }
+
+    if (this.options.captureConsoleError) {
+      this.setupConsoleCapture();
+    }
+  }
+
+  teardown(): void {
+    if (isBrowser()) {
+      if (this.onError) window.removeEventListener('error', this.onError, true);
+      if (this.onRejection) window.removeEventListener('unhandledrejection', this.onRejection);
+    }
+    if (isNode()) {
+      if (this.nodeUncaughtHandler) process.removeListener('uncaughtException', this.nodeUncaughtHandler);
+      if (this.nodeRejectionHandler) process.removeListener('unhandledRejection', this.nodeRejectionHandler);
+    }
+    if (this.originalConsoleError) console.error = this.originalConsoleError;
+  }
+
+  private setupBrowser(): void {
     this.onError = (event: ErrorEvent) => {
+      if (!event.error) return;
       if (this.shouldIgnore(event.message, event.filename)) return;
 
-      if (event.error) {
-        this.monitor!.emit(
-          this.monitor!.createEvent('js_error', {
-            message: event.error.message ?? event.message,
-            stack: event.error.stack,
-            filename: event.filename,
-            lineno: event.lineno,
-            colno: event.colno,
-          }),
-        );
-      } else if (event.target && event.target !== window) {
-        const target = event.target as HTMLElement;
-        this.monitor!.emit(
-          this.monitor!.createEvent('resource_error', {
-            tagName: target.tagName?.toLowerCase(),
-            src: (target as HTMLImageElement).src ?? (target as HTMLLinkElement).href,
-          }),
-        );
-      }
+      this.monitor!.emit(
+        this.monitor!.createEvent('js_error', {
+          message: event.error.message ?? event.message,
+          stack: event.error.stack,
+          filename: event.filename,
+          lineno: event.lineno,
+          colno: event.colno,
+        }),
+      );
     };
 
     this.onRejection = (event: PromiseRejectionEvent) => {
@@ -72,29 +89,52 @@ export class ErrorPlugin implements MonitorPlugin {
 
     window.addEventListener('error', this.onError, true);
     window.addEventListener('unhandledrejection', this.onRejection);
-
-    if (this.options.captureConsoleError) {
-      this.originalConsoleError = console.error;
-      console.error = (...args: unknown[]) => {
-        this.originalConsoleError!.apply(console, args);
-        const message = args.map((a) => (a instanceof Error ? a.message : String(a))).join(' ');
-        if (!this.shouldIgnore(message)) {
-          this.monitor!.emit(
-            this.monitor!.createEvent('js_error', {
-              message,
-              source: 'console.error',
-            }),
-          );
-        }
-      };
-    }
   }
 
-  teardown(): void {
-    if (!isBrowser()) return;
-    if (this.onError) window.removeEventListener('error', this.onError, true);
-    if (this.onRejection) window.removeEventListener('unhandledrejection', this.onRejection);
-    if (this.originalConsoleError) console.error = this.originalConsoleError;
+  private setupNode(): void {
+    this.nodeUncaughtHandler = (err: Error) => {
+      if (this.shouldIgnore(err.message)) return;
+
+      this.monitor!.emit(
+        this.monitor!.createEvent('js_error', {
+          message: err.message,
+          stack: err.stack,
+          source: 'uncaughtException',
+        }),
+      );
+    };
+
+    this.nodeRejectionHandler = (reason: unknown) => {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      if (this.shouldIgnore(message)) return;
+
+      this.monitor!.emit(
+        this.monitor!.createEvent('promise_error', {
+          message,
+          stack: reason instanceof Error ? (reason as Error).stack : undefined,
+          source: 'unhandledRejection',
+        }),
+      );
+    };
+
+    process.on('uncaughtException', this.nodeUncaughtHandler);
+    process.on('unhandledRejection', this.nodeRejectionHandler);
+  }
+
+  private setupConsoleCapture(): void {
+    this.originalConsoleError = console.error;
+    console.error = (...args: unknown[]) => {
+      this.originalConsoleError!.apply(console, args);
+      const message = args.map((a) => (a instanceof Error ? a.message : String(a))).join(' ');
+      if (!this.shouldIgnore(message)) {
+        this.monitor!.emit(
+          this.monitor!.createEvent('js_error', {
+            message,
+            source: 'console.error',
+          }),
+        );
+      }
+    };
   }
 
   private shouldIgnore(message?: string, url?: string): boolean {

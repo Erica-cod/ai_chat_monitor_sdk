@@ -12,11 +12,13 @@ export interface TransportPluginOptions {
   flushInterval?: number;
   /** 最大重试次数，默认 3 */
   maxRetries?: number;
+  /** 自定义上报函数，传入后跳过内置的 sendBeacon/fetch */
+  customSend?: (endpoint: string, payload: string) => void;
 }
 
 /**
  * 传输插件。
- * sendBeacon 优先，Fetch 兜底。
+ * 支持三种上报方式（按优先级）：customSend → sendBeacon → fetch。
  * 支持即时上报和批量上报两种模式。
  */
 export class TransportPlugin implements MonitorPlugin {
@@ -50,14 +52,16 @@ export class TransportPlugin implements MonitorPlugin {
       this.sendBatch(events as MonitorEvent[]);
     });
 
-    if (this.options.mode === 'batch' && isBrowser()) {
+    if (this.options.mode === 'batch') {
       this.timer = setInterval(() => this.flush(), this.options.flushInterval!);
 
-      this.onBeforeUnload = () => this.flush();
-      window.addEventListener('beforeunload', this.onBeforeUnload);
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') this.flush();
-      });
+      if (isBrowser()) {
+        this.onBeforeUnload = () => this.flush();
+        window.addEventListener('beforeunload', this.onBeforeUnload);
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'hidden') this.flush();
+        });
+      }
     }
   }
 
@@ -90,6 +94,20 @@ export class TransportPlugin implements MonitorPlugin {
     if (events.length === 0) return;
     const payload = JSON.stringify(events);
 
+    if (this.options.customSend) {
+      try {
+        this.options.customSend(this.endpoint, payload);
+      } catch {
+        // 自定义发送失败时 fallback 到内置方式
+        this.sendViaBuiltin(payload);
+      }
+      return;
+    }
+
+    this.sendViaBuiltin(payload);
+  }
+
+  private sendViaBuiltin(payload: string): void {
     if (!this.sendViaBeacon(payload)) {
       this.sendViaFetch(payload);
     }

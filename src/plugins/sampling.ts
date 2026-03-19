@@ -25,7 +25,7 @@ export class SamplingPlugin implements MonitorPlugin {
     this.options = {
       rate: options.rate ?? 1.0,
       typeRates: options.typeRates ?? {},
-      alwaysSample: options.alwaysSample ?? ['js_error', 'promise_error', 'sse_error'],
+      alwaysSample: options.alwaysSample ?? ['js_error', 'promise_error', 'stream_error'],
     };
     this.sessionSampled = Math.random() < this.options.rate;
   }

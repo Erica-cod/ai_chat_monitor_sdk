@@ -26,3 +26,12 @@ export function safeRun<T>(fn: () => T, fallback?: T): T | undefined {
 export function isBrowser(): boolean {
   return typeof window !== 'undefined' && typeof document !== 'undefined';
 }
+
+/** 判断是否在 Node.js 环境 */
+export function isNode(): boolean {
+  return (
+    typeof process !== 'undefined' &&
+    process.versions != null &&
+    process.versions.node != null
+  );
+}

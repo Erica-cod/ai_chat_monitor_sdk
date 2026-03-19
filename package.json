@@ -1,20 +1,20 @@
 {
   "name": "ai-stream-monitor",
   "version": "0.1.0",
-  "description": "Lightweight frontend monitoring SDK for AI chat applications with SSE streaming lifecycle tracing",
+  "description": "Lightweight monitoring SDK for AI chat applications — streaming lifecycle tracing, token usage, TTFT/TTLB/TPS metrics",
   "keywords": [
     "ai",
     "chat",
     "monitor",
-    "sse",
     "streaming",
     "observability",
     "tracing",
-    "error-tracking",
-    "performance",
-    "web-vitals",
-    "ttfb",
-    "ttlb"
+    "token-usage",
+    "ttft",
+    "ttlb",
+    "tps",
+    "llm",
+    "agent"
   ],
   "license": "MIT",
   "author": "",
@@ -69,6 +69,7 @@
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {
+    "@types/node": "^25.5.0",
     "@types/react": "^19.0.0",
     "react": "^19.0.0",
     "tsup": "^8.0.0",

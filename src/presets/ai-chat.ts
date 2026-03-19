@@ -5,7 +5,6 @@ import { SessionPlugin } from '../plugins/session';
 import { SamplingPlugin } from '../plugins/sampling';
 import { DedupePlugin } from '../plugins/dedupe';
 import { FetchPlugin } from '../plugins/fetch';
-import { PerformancePlugin } from '../plugins/performance';
 import type { AIChatMonitorConfig, MonitorInstance } from '../core/types';
 
 /**
@@ -13,7 +12,6 @@ import type { AIChatMonitorConfig, MonitorInstance } from '../core/types';
  */
 function isDevMode(): boolean {
   try {
-    // 兼容浏览器和 Node.js 环境：通过 globalThis 安全访问 process
     const g = globalThis as Record<string, unknown>;
     const proc = g.process as { env?: Record<string, string> } | undefined;
     const env = proc?.env?.NODE_ENV;
@@ -37,6 +35,7 @@ function isDevMode(): boolean {
  *   endpoint: '/api/telemetry',
  *   preset: 'production',
  *   sampling: { rate: 0.1 },
+ *   fetch: { streamPatterns: [/\/api\/chat/, /\/v1\/completions/] },
  * })
  * ```
  */
@@ -57,7 +56,7 @@ export function createAIChatMonitor(config: AIChatMonitorConfig): MonitorInstanc
   monitor.use(
     new SamplingPlugin({
       rate: samplingRate,
-      alwaysSample: config.sampling?.alwaysSample ?? ['js_error', 'promise_error', 'sse_error'],
+      alwaysSample: config.sampling?.alwaysSample ?? ['js_error', 'promise_error', 'stream_error'],
     }),
   );
 
@@ -76,16 +75,14 @@ export function createAIChatMonitor(config: AIChatMonitorConfig): MonitorInstanc
       }),
     );
 
-    // Fetch 拦截
+    // Fetch 拦截（含流式自动追踪）
     monitor.use(
       new FetchPlugin({
         includeUrls: config.fetch?.includeUrls,
         excludeUrls: config.fetch?.excludeUrls ?? [/\/api\/monitor/],
+        streamPatterns: config.fetch?.streamPatterns,
       }),
     );
-
-    // 性能指标
-    monitor.use(new PerformancePlugin());
   } else {
     // minimal 模式只有错误
     monitor.use(new ErrorPlugin({ ignoreErrors: config.error?.ignoreErrors }));
@@ -99,6 +96,7 @@ export function createAIChatMonitor(config: AIChatMonitorConfig): MonitorInstanc
       batchSize: config.transport?.batchSize,
       flushInterval: config.transport?.flushInterval,
       maxRetries: config.transport?.maxRetries,
+      customSend: config.transport?.customSend,
     }),
   );
 

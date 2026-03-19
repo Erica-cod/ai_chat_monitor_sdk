@@ -1,11 +1,12 @@
 import type { MonitorPlugin, MonitorInstance } from '../core/types';
 
 /**
- * SSE 追踪插件（自动模式）。
- * 监听通过 EventSource 建立的 SSE 连接，自动追踪生命周期。
+ * EventSource 自动追踪插件。
+ * 监听通过原生 EventSource 建立的 SSE 连接，自动追踪生命周期。
  *
  * 注意：大多数 AI 对话项目使用 fetch + ReadableStream 而非 EventSource。
- * 对于 fetch-based SSE，推荐使用 monitor.createSSETrace() 手动追踪。
+ * 对于 fetch-based 流式响应，推荐配置 FetchPlugin 的 streamPatterns 实现自动追踪，
+ * 或使用 monitor.createStreamTrace() 手动追踪。
  * 此插件仅处理原生 EventSource 场景。
  */
 export class SSEAutoPlugin implements MonitorPlugin {
@@ -27,7 +28,7 @@ export class SSEAutoPlugin implements MonitorPlugin {
       init?: EventSourceInit,
     ) {
       const es = new OrigES(url, init);
-      const trace = mon.createSSETrace({
+      const trace = mon.createStreamTrace({
         messageId: `es_${Date.now().toString(36)}`,
       });
 
