@@ -1,6 +1,6 @@
 # ai-stream-monitor
 
-> Lightweight, tree-shakeable monitoring SDK built specifically for AI chat applications. Tracks streaming lifecycle metrics (TTFT, TTLB, TPS), thinking/generating phases, tool call chains, and errors — all in under 3 KB gzipped.
+> Lightweight, tree-shakeable monitoring SDK built specifically for AI chat applications. Tracks streaming lifecycle metrics (TTFT, TTLB, TPS), thinking/generating phases, tool call chains, and errors. Full bundle ~12 KB gzipped, individual plugins under 1.5 KB each.
 
 ## Why ai-stream-monitor?
 
@@ -12,7 +12,7 @@ Generic monitoring tools like Sentry and LogRocket treat AI streaming responses 
 - **Phase-level breakdown** — separate timing for thinking, generating, and tool-calling phases
 - **Tool call chains** — track each tool invocation with name, params, result, and duration
 - **Auto-parsing** — built-in parsers for OpenAI and Anthropic stream formats that detect phases and token usage automatically
-- **Tiny footprint** — core < 3 KB gzipped, every plugin is a separate entry point for tree-shaking
+- **Tiny footprint** — full bundle ~12 KB gzipped, individual plugins 0.4–1.5 KB each, every plugin is a separate entry point for tree-shaking
 
 ## Requirements
 
@@ -413,11 +413,21 @@ The SDK itself is transport-agnostic — it only produces JSON events. If you us
 
 ## Bundle Size
 
-| Import path | Gzip size |
-|---|---|
-| `createAIChatMonitor` (full preset) | ~3 KB |
-| `Monitor` + `ErrorPlugin` + `TransportPlugin` | ~1.5 KB |
-| `ai-stream-monitor/react` (hooks only) | ~0.5 KB |
+Measured gzip sizes of ESM builds:
+
+| Import path | Raw | Gzip |
+|---|---|---|
+| `ai-stream-monitor` (full bundle) | 53.4 KB | ~12 KB |
+| `ai-stream-monitor/react` | 49.2 KB | ~12 KB |
+| `ai-stream-monitor/plugins/error` | 3.8 KB | ~0.9 KB |
+| `ai-stream-monitor/plugins/transport` | 3.7 KB | ~1.2 KB |
+| `ai-stream-monitor/plugins/fetch` | 16.4 KB | ~4.4 KB |
+| `ai-stream-monitor/plugins/session` | 3.2 KB | ~0.9 KB |
+| `ai-stream-monitor/plugins/sampling` | 0.8 KB | ~0.4 KB |
+| `ai-stream-monitor/plugins/dedupe` | 1.4 KB | ~0.6 KB |
+| `ai-stream-monitor/parsers` | 8.0 KB | ~2.0 KB |
+
+When using manual plugin assembly (instead of the full preset), you import only the plugins you need. For example, `Monitor` + `ErrorPlugin` + `TransportPlugin` together gzip to roughly 3 KB.
 
 ## License
 
