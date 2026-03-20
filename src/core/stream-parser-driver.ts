@@ -12,6 +12,7 @@ export class StreamParserDriver {
   private hasContentStarted = false;
   private ended = false;
   private reportedToolCalls = new Set<string>();
+  private contentChunkCount = 0;
 
   constructor(parser: ChunkParser, trace: StreamTrace) {
     this.parser = parser;
@@ -38,10 +39,13 @@ export class StreamParserDriver {
       this.trace.onPhase('thinking', 'end');
     }
 
-    if (chunk.content && !this.hasContentStarted) {
-      this.hasContentStarted = true;
-      if (!this.isInThinking) {
-        this.trace.onPhase('generating', 'start');
+    if (chunk.content) {
+      this.contentChunkCount++;
+      if (!this.hasContentStarted) {
+        this.hasContentStarted = true;
+        if (!this.isInThinking) {
+          this.trace.onPhase('generating', 'start');
+        }
       }
     }
 
@@ -82,6 +86,10 @@ export class StreamParserDriver {
       if (tokenUsage.promptTokens != null) result.promptTokens = tokenUsage.promptTokens;
       if (tokenUsage.completionTokens != null) result.completionTokens = tokenUsage.completionTokens;
       if (tokenUsage.totalTokens != null) result.totalTokens = tokenUsage.totalTokens;
+    }
+    if (result.completionTokens == null && this.contentChunkCount > 0) {
+      result.completionTokens = this.contentChunkCount;
+      result.estimatedTokens = true;
     }
     this.trace.complete(result);
   }

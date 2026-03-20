@@ -133,6 +133,11 @@ export interface StreamResult {
   totalTokens?: number;
   /** 模型名称（覆盖 options 中的值） */
   model?: string;
+  /**
+   * 当 API 未返回 token 用量时，SDK 用内容 chunk 数估算 completionTokens。
+   * 此标记为 true 表示 completionTokens 是估算值而非 API 精确值。
+   */
+  estimatedTokens?: boolean;
   /** 允许附加自定义字段 */
   [key: string]: unknown;
 }

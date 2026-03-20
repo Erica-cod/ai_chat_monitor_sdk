@@ -100,6 +100,8 @@ Supported parsers:
 - `'auto'` — detects the format from the first line of the stream
 - Custom `ChunkParser` instance — implement `parse(raw: string)` and `reset()` for other providers
 
+**Token usage**: When the API returns token counts in the stream (OpenAI requires `stream_options: { include_usage: true }`, Anthropic includes it by default), the SDK reports exact values. Otherwise, it estimates `completionTokens` by counting content chunks and marks the result with `estimatedTokens: true`.
+
 ### React hook
 
 ```tsx
@@ -320,7 +322,9 @@ Every event has a `type` string and a `data` object. Below is what each type con
 
 **`stream_complete`** — Stream finished successfully
 
-`data`: `{ traceId, messageId, ttfb, ttlb, tps, tokenUsage, phases }`
+`data`: `{ traceId, messageId, ttfb, ttlb, tps, promptTokens, completionTokens, totalTokens, estimatedTokens, phases }`
+
+When the API response includes token usage (e.g. OpenAI with `stream_options: { include_usage: true }`), `promptTokens` / `completionTokens` / `totalTokens` are exact values from the API. When token usage is not available, the SDK estimates `completionTokens` by counting content chunks in the stream (each SSE event typically equals one token). In this case `estimatedTokens` is set to `true` so your backend can distinguish exact counts from estimates.
 
 **`stream_error`** — Stream failed
 
