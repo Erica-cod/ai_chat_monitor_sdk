@@ -1,6 +1,6 @@
 {
   "name": "ai-stream-monitor",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Lightweight monitoring SDK for AI chat applications — streaming lifecycle tracing, token usage, TTFT/TTLB/TPS metrics",
   "keywords": [
     "ai",
