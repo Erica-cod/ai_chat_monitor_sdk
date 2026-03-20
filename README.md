@@ -1,26 +1,34 @@
 # ai-stream-monitor
 
-Lightweight frontend monitoring SDK for AI chat applications. Core gzip < 3KB.
+> Lightweight, tree-shakeable monitoring SDK built specifically for AI chat applications. Tracks streaming lifecycle metrics (TTFT, TTLB, TPS), thinking/generating phases, tool call chains, and errors — all in under 3 KB gzipped.
 
-## Why?
+## Why ai-stream-monitor?
 
-Traditional monitoring SDKs (Sentry, LogRocket) are designed for generic web apps. They don't understand streaming lifecycle, AI conversation phases, or tool calling chains. `ai-stream-monitor` fills this gap.
+Generic monitoring tools like Sentry and LogRocket treat AI streaming responses as ordinary HTTP requests. They capture when a request starts and ends, but miss everything in between — the moment the first token arrives, how long the model spends "thinking" vs "generating", whether a tool call stalled, or how many tokens were consumed.
 
-| Pain Point | Traditional SDKs | ai-stream-monitor |
-|---|---|---|
-| Streaming | Only tracks request start/end | Full lifecycle: TTFT, TTLB, phases, stall detection |
-| AI tool calling | Not tracked | Tool call chains with timing |
-| Thinking/generating phases | Not tracked | Phase-level breakdown |
-| Bundle size | 22-68KB+ | Core < 3KB, tree-shakeable |
-| AI-specific retries | Lost correlation | traceId links retry chains |
+`ai-stream-monitor` is purpose-built for this. It provides:
 
-## Quick Start
+- **Full streaming lifecycle** — TTFT (time to first token), TTLB (time to last byte), TPS (tokens per second), stall detection
+- **Phase-level breakdown** — separate timing for thinking, generating, and tool-calling phases
+- **Tool call chains** — track each tool invocation with name, params, result, and duration
+- **Auto-parsing** — built-in parsers for OpenAI and Anthropic stream formats that detect phases and token usage automatically
+- **Tiny footprint** — core < 3 KB gzipped, every plugin is a separate entry point for tree-shaking
+
+## Requirements
+
+- **Runtime**: Browser (ES2020+) or Node.js 16+
+- **React integration** (optional): React 17+
+- **No runtime dependencies**
+
+## Installation
 
 ```bash
 npm install ai-stream-monitor
 ```
 
-### One-line setup (zero config)
+## Quick Start
+
+### Zero-config setup
 
 ```typescript
 import { createAIChatMonitor } from 'ai-stream-monitor'
@@ -28,9 +36,11 @@ import { createAIChatMonitor } from 'ai-stream-monitor'
 const monitor = createAIChatMonitor({ appId: 'my-ai-app' })
 ```
 
-That's it. Error tracking, performance metrics, and stream tracing are enabled by default. Data is sent to `POST /api/monitor`.
+This single line enables error tracking, session management, and stream tracing. Events are sent via `POST /api/monitor` by default.
 
-### With React
+### React setup
+
+Wrap your app in `MonitorProvider`. All child components can then access the monitor via hooks.
 
 ```tsx
 import { MonitorProvider } from 'ai-stream-monitor/react'
@@ -44,40 +54,53 @@ function App() {
 }
 ```
 
-## Stream Trace — The Core Feature
+## Stream Tracing
 
-Track the full lifecycle of an AI streaming response:
+Stream tracing is the core feature. It tracks the full lifecycle of a single AI streaming response, from the moment you send the request to the final token.
+
+### Manual tracing
+
+Use `createStreamTrace` to create a trace, then call lifecycle methods as the stream progresses:
 
 ```typescript
 const trace = monitor.createStreamTrace({
   messageId: 'msg_123',
   model: 'gpt-4o',
-  stallThreshold: 5000,   // detect stalls > 5s
+  stallThreshold: 5000,
 })
 
-trace.start()                              // Request sent
-trace.onFirstChunk()                       // First byte → TTFT
-trace.onPhase('thinking', 'start')         // AI thinking phase
+trace.start()
+trace.onFirstChunk()
+trace.onPhase('thinking', 'start')
 trace.onPhase('thinking', 'end')
-trace.onPhase('generating', 'start')       // AI generating phase
-trace.onToolCall('web_search', { query })  // Tool call started
-trace.onToolResult('web_search', { ok })   // Tool call completed
-trace.complete({ completionTokens: 350, model: 'gpt-4o' })  // Stream done → TTLB, TPS
+trace.onPhase('generating', 'start')
+trace.onToolCall('web_search', { query: 'latest news' })
+trace.onToolResult('web_search', { ok: true })
+trace.complete({ completionTokens: 350, model: 'gpt-4o' })
 ```
 
-### Auto-parse streaming content
+Each call emits a typed event (`stream_start`, `stream_first_token`, `stream_phase`, etc.) with timing data attached.
+
+### Automatic stream parsing
+
+Instead of calling lifecycle methods manually, configure a `parser` and `streamPatterns`. The SDK will intercept matching fetch requests, read the SSE stream, and drive the trace automatically:
 
 ```typescript
 const monitor = createAIChatMonitor({
   appId: 'my-ai-app',
   fetch: { streamPatterns: [/\/api\/chat/, /\/v1\/completions/] },
-  parser: 'openai',  // or 'anthropic', 'auto'
+  parser: 'openai',
 })
 ```
 
-With `parser` configured, the SDK automatically detects thinking phases, tool calls, and token usage from the stream — no manual `trace.onPhase()` calls needed.
+Supported parsers:
 
-### With React Hook
+- `'openai'` — OpenAI, DeepSeek, Volcengine, and any OpenAI-compatible format
+- `'anthropic'` — Anthropic Claude event stream format
+- `'auto'` — detects the format from the first line of the stream
+- Custom `ChunkParser` instance — implement `parse(raw: string)` and `reset()` for other providers
+
+### React hook
 
 ```tsx
 import { useStreamTrace } from 'ai-stream-monitor/react'
@@ -108,64 +131,84 @@ function ChatMessage({ messageId }: { messageId: string }) {
 
 ### Presets
 
+`createAIChatMonitor` ships with three presets that bundle common plugin combinations:
+
+**development** (default when `NODE_ENV !== 'production'`):
+- 100% sampling, debug logging on, immediate event send
+- Plugins: Error, Session, Fetch, Sampling, Dedupe, Transport, Performance
+
+**production** (default when `NODE_ENV === 'production'`):
+- 10% sampling, batch send (10 events / 5s flush), deduplication
+- Plugins: all development plugins + OfflineQueue (IndexedDB persistence)
+
+**minimal**:
+- 5% sampling, errors only, no fetch interception
+- Plugins: Error, Session, Sampling, Transport
+
 ```typescript
-// Auto-detected: development mode (NODE_ENV) → debug on, 100% sampling, immediate send
-createAIChatMonitor({ appId: 'my-app' })
-
-// Explicit production preset → 10% sampling, batch send, dedupe, Web Vitals, offline queue
 createAIChatMonitor({ appId: 'my-app', preset: 'production' })
-
-// Minimal → errors only, 5% sampling
-createAIChatMonitor({ appId: 'my-app', preset: 'minimal' })
 ```
 
-### Full Configuration
+### Full configuration reference
 
 ```typescript
 createAIChatMonitor({
+  // --- Required ---
   appId: 'my-ai-app',
-  endpoint: '/api/telemetry',
-  debug: false,
-  version: '1.0.0',
 
-  preset: 'production',
+  // --- General ---
+  endpoint: '/api/telemetry',   // event receiver URL (default: '/api/monitor')
+  debug: false,                 // console logging for SDK internals
+  version: '1.0.0',            // app version, attached to every event context
+  preset: 'production',        // 'development' | 'production' | 'minimal'
 
+  // --- Transport ---
   transport: {
-    mode: 'batch',
-    batchSize: 10,
-    flushInterval: 5000,
-    maxRetries: 3,
-    headers: { 'X-Auth-Token': 'your-token' },
+    mode: 'batch',              // 'immediate' | 'batch'
+    batchSize: 10,              // flush after N events (batch mode)
+    flushInterval: 5000,        // flush interval in ms (batch mode)
+    maxRetries: 3,              // retry failed sends with exponential backoff (max 30s)
+    headers: {                  // custom headers for fetch transport (not used by sendBeacon)
+      'X-Auth-Token': 'your-token',
+    },
   },
 
+  // --- Sampling ---
   sampling: {
-    rate: 0.1,
-    alwaysSample: ['js_error', 'promise_error', 'stream_error'],
+    rate: 0.1,                                          // sample 10% of sessions
+    alwaysSample: ['js_error', 'promise_error', 'stream_error'],  // never drop these
   },
 
+  // --- Error tracking ---
   error: {
-    ignoreErrors: [/ResizeObserver/],
-    ignoreUrls: [/chrome-extension/],
+    ignoreErrors: [/ResizeObserver/],     // skip errors matching these patterns
+    ignoreUrls: [/chrome-extension/],     // skip errors from these script URLs
   },
 
+  // --- Fetch interception ---
   fetch: {
-    streamPatterns: [/\/api\/chat/],
-    excludeUrls: [/\/health/],
+    streamPatterns: [/\/api\/chat/],      // URLs matching these are auto-traced as AI streams
+    excludeUrls: [/\/health/],            // never intercept these URLs
   },
 
-  parser: 'openai',
-  dedupeWindow: 5000,
+  // --- Stream parser ---
+  parser: 'openai',           // auto-detect thinking phases, tool calls, token usage
 
+  // --- Deduplication ---
+  dedupeWindow: 5000,         // suppress identical events within this window (ms)
+
+  // --- Event hook ---
   beforeSend: (event) => {
-    // data masking, filtering, enrichment
+    // mutate, filter, or enrich events before they reach the transport
+    // return null to drop the event
     return event
   },
 })
 ```
 
-### Manual Plugin Registration
+### Manual plugin assembly
 
-For fine-grained control:
+For full control, use the `Monitor` class directly and register only the plugins you need:
 
 ```typescript
 import { Monitor } from 'ai-stream-monitor'
@@ -181,92 +224,183 @@ monitor.use(new TransportPlugin({ endpoint: '/api/monitor', mode: 'batch' }))
 monitor.init()
 ```
 
+Plugins execute in priority order (lower number = earlier). The event pipeline is: emit → SamplingPlugin → DedupePlugin → SessionPlugin → ... → TransportPlugin.
+
 ## Plugins
 
-| Plugin | Priority | Description |
-|---|---|---|
-| `SamplingPlugin` | 10 | Session-based sampling with per-type rates |
-| `DedupePlugin` | 20 | Deduplicates events within a time window |
-| `SessionPlugin` | 30 | Session ID management (sessionStorage + memory fallback) |
-| `ErrorPlugin` | 50 | JS errors, promise rejections (browser + Node.js) |
-| `FetchPlugin` | 50 | HTTP request interception, auto stream tracing |
-| `PerformancePlugin` | 50 | Web Vitals (FCP, LCP, CLS, INP) |
-| `SSEAutoPlugin` | 50 | Auto-trace native EventSource connections |
-| `WebSocketPlugin` | 50 | Auto-trace WebSocket connections |
-| `TransportPlugin` | 90 | sendBeacon + fetch fallback, batch/immediate |
-| `OfflineQueuePlugin` | 95 | IndexedDB offline queue with retry |
+Each plugin is published as a separate entry point for tree-shaking. Import from `ai-stream-monitor/plugins/<name>`.
 
-## Event Types
+### SamplingPlugin (priority 10)
 
-```typescript
-type MonitorEventType =
-  | 'js_error'              // JavaScript runtime error
-  | 'promise_error'         // Unhandled promise rejection
-  | 'http_request'          // Fetch request (method, status, duration)
-  | 'web_vital'             // FCP, LCP, CLS, INP
-  | 'stream_start'          // Stream started
-  | 'stream_first_token'    // First token received (TTFT)
-  | 'stream_phase'          // Thinking/generating phase timing
-  | 'stream_tool_call'      // Tool calling lifecycle
-  | 'stream_stall'          // Stream stall detected
-  | 'stream_complete'       // Stream completed (TTLB, TPS)
-  | 'stream_error'          // Stream error
-  | 'session_start'         // Session started
-  | 'session_end'           // Session ended
-  | 'custom'                // User-defined events
-```
+Session-level sampling. When a session is not sampled, all events are dropped except those listed in `alwaysSample`. Sampling decision is made once per session and persisted.
 
-## Backend Receiver
+### DedupePlugin (priority 20)
 
-The SDK sends `MonitorEvent[]` as JSON to your endpoint. Here's a minimal receiver:
+Suppresses duplicate events of the same type with identical data fingerprints within a configurable time window (default 5000ms).
 
-```typescript
-// Express
-app.post('/api/monitor', (req, res) => {
-  const events = req.body  // MonitorEvent[]
-  for (const event of events) {
-    console.log(`[${event.type}]`, event.data)
-  }
-  res.json({ ok: true })
-})
-```
+### SessionPlugin (priority 30)
 
-See `examples/` for Prometheus integration examples.
+Manages a `sessionId` stored in `sessionStorage` (with in-memory fallback). Emits `session_start` and `session_end` events. Session ID is generated using crypto-secure randomness with `Math.random` fallback.
+
+### ErrorPlugin (priority 50)
+
+Captures `window.onerror` (JS errors) and `unhandledrejection` (promise rejections). In Node.js, listens to `process.on('uncaughtException')` and `process.on('unhandledRejection')`. Supports pattern-based filtering via `ignoreErrors` and `ignoreUrls`.
+
+### FetchPlugin (priority 50)
+
+Intercepts `globalThis.fetch` to track HTTP requests. When a response matches `streamPatterns` and returns a streaming content type (`text/event-stream`, `application/stream+json`, `application/x-ndjson`), automatically creates a `StreamTrace` and reads the stream. If a `parser` is configured, the stream content is parsed to detect phases, tool calls, and token usage.
+
+### PerformancePlugin (priority 50)
+
+Collects Web Vitals using the `PerformanceObserver` API: FCP, LCP, CLS, and INP. Each metric is emitted as a `web_vital` event.
+
+### SSEAutoPlugin (priority 50)
+
+Intercepts `new EventSource(url)` to automatically trace Server-Sent Event connections. Only traces URLs matching `includeUrls` (no URLs are traced when `includeUrls` is not configured).
+
+### WebSocketPlugin (priority 50)
+
+Intercepts `new WebSocket(url)` to trace WebSocket message streams. Only traces URLs matching `includeUrls` (no URLs are traced when `includeUrls` is not configured).
+
+### TransportPlugin (priority 90)
+
+Sends events to your backend endpoint. Uses `navigator.sendBeacon` for reliability (survives page unload), with automatic fallback to `fetch` when the payload exceeds 60 KB or custom headers are configured. Supports `immediate` and `batch` modes. Failed sends are retried with exponential backoff capped at 30 seconds.
+
+### OfflineQueuePlugin (priority 95)
+
+Persists unsent events in IndexedDB when the network is unavailable. Automatically flushes the queue when connectivity is restored. Supports `maxSize` (max events in queue) and `maxAge` (auto-purge expired events).
+
+## Event Types Reference
+
+Every event has a `type` string and a `data` object. Below is what each type contains.
+
+### Error events
+
+**`js_error`** — JavaScript runtime error
+
+`data`: `{ message, stack, filename, lineno, colno }`
+
+**`promise_error`** — Unhandled promise rejection
+
+`data`: `{ message, stack, reason }`
+
+### HTTP events
+
+**`http_request`** — Fetch request completed
+
+`data`: `{ method, url, status, duration, ok }`
+
+### Performance events
+
+**`web_vital`** — Web Vitals metric
+
+`data`: `{ name, value, rating }` where `name` is one of `FCP`, `LCP`, `CLS`, `INP`
+
+### Stream lifecycle events
+
+**`stream_start`** — Stream trace started
+
+`data`: `{ traceId, messageId, model, provider }`
+
+**`stream_first_token`** — First token received
+
+`data`: `{ traceId, messageId, ttft }` where `ttft` is time-to-first-token in ms
+
+**`stream_phase`** — Thinking/generating phase boundary
+
+`data`: `{ traceId, messageId, phase, action, duration }` where `action` is `'start'` or `'end'`
+
+**`stream_tool_call`** — Tool call lifecycle
+
+`data`: `{ traceId, messageId, toolName, params, result, duration }`
+
+**`stream_stall`** — Stream stall detected (no data received for longer than `stallThreshold`)
+
+`data`: `{ traceId, messageId, stallDuration }`
+
+**`stream_complete`** — Stream finished successfully
+
+`data`: `{ traceId, messageId, ttfb, ttlb, tps, tokenUsage, phases }`
+
+**`stream_error`** — Stream failed
+
+`data`: `{ traceId, messageId, error }`
+
+### Session events
+
+**`session_start`** — New session started
+
+`data`: `{ sessionId }`
+
+**`session_end`** — Session ended (page unload)
+
+`data`: `{ sessionId, duration }`
+
+### Custom events
+
+**`custom`** — User-defined event via `monitor.emit(monitor.createEvent('custom', { ... }))`
 
 ## Event Schema
 
+Every event follows this structure:
+
 ```typescript
 interface MonitorEvent {
-  id: string
-  type: MonitorEventType
-  timestamp: number
-  data: Record<string, unknown>
+  id: string                    // unique event ID
+  type: MonitorEventType        // event type (see above)
+  timestamp: number             // Unix timestamp in ms
+  data: Record<string, unknown> // event-specific payload
   context: {
-    appId: string
-    sessionId: string
-    userId?: string
-    url: string
-    userAgent: string
-    version?: string
+    appId: string               // your application ID
+    sessionId: string           // auto-generated session ID
+    userId?: string             // set via monitor.setContext({ userId })
+    url: string                 // current page URL
+    userAgent: string           // browser user agent
+    version?: string            // app version from config
   }
 }
 ```
 
+## Backend Integration
+
+The SDK sends `MonitorEvent[]` as a JSON array to your configured endpoint. A minimal Express receiver:
+
+```typescript
+app.post('/api/monitor', (req, res) => {
+  const events: MonitorEvent[] = req.body
+
+  for (const event of events) {
+    switch (event.type) {
+      case 'stream_complete':
+        console.log(`TTFT: ${event.data.ttft}ms, TPS: ${event.data.tps}`)
+        break
+      case 'js_error':
+        console.error(`Error: ${event.data.message}`)
+        break
+    }
+  }
+
+  res.json({ ok: true })
+})
+```
+
+See `examples/backend-prometheus.ts` for a Prometheus metrics integration example.
+
 ## Design Principles
 
-1. **Zero config** — one line to start, sensible defaults for everything
-2. **Never crash host app** — all plugin execution is try-catch wrapped
-3. **Tree-shakeable** — import only what you need
-4. **Framework agnostic** — vanilla JS core, optional React hooks
-5. **Transport agnostic** — SDK sends JSON, you decide where it goes
+1. **Zero config** — one import, one function call. Sensible defaults for everything.
+2. **Never crash the host app** — every plugin runs inside try-catch. SDK bugs are swallowed (and logged in debug mode), never thrown.
+3. **Tree-shakeable** — each plugin is a separate entry point. Import only what you need.
+4. **Framework agnostic** — vanilla JavaScript core. React hooks are an optional add-on.
+5. **Transport agnostic** — the SDK emits JSON events. You decide where they go.
 
 ## Bundle Size
 
-| Import | Gzip |
+| Import path | Gzip size |
 |---|---|
 | `createAIChatMonitor` (full preset) | ~3 KB |
 | `Monitor` + `ErrorPlugin` + `TransportPlugin` | ~1.5 KB |
-| `ai-stream-monitor/react` | ~0.5 KB |
+| `ai-stream-monitor/react` (hooks only) | ~0.5 KB |
 
 ## License
 
