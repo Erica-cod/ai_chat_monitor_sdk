@@ -384,7 +384,24 @@ app.post('/api/monitor', (req, res) => {
 })
 ```
 
-See `examples/backend-prometheus.ts` for a Prometheus metrics integration example.
+## Grafana / Prometheus Integration
+
+The `examples/` directory includes a production-ready Prometheus backend and a Grafana dashboard:
+
+- **`examples/backend-prometheus.ts`** — Express server that converts SDK events into Prometheus metrics. Covers all event types with `app_id`, `model`, and `provider` labels.
+- **`examples/grafana-dashboard.json`** — importable Grafana dashboard with TTFT/TTLB/TPS percentile charts, token usage breakdown, error rates, Web Vitals, and active stream gauges. Uses a `$app_id` template variable for multi-app filtering.
+
+Quick setup:
+
+```bash
+cd examples
+npm install express prom-client
+npx ts-node backend-prometheus.ts
+```
+
+Then configure your Prometheus to scrape `http://localhost:3001/metrics` and import the dashboard JSON into Grafana.
+
+The SDK itself is transport-agnostic — it only produces JSON events. If you use a different observability stack (Loki, ClickHouse, OpenTelemetry, Datadog), use the event schema documented above to build your own adapter. The Prometheus example serves as a reference implementation.
 
 ## Design Principles
 
