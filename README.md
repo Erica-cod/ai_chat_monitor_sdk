@@ -386,10 +386,10 @@ app.post('/api/monitor', (req, res) => {
 
 ## Grafana / Prometheus Integration
 
-The `examples/` directory includes a production-ready Prometheus backend and a Grafana dashboard:
+The [examples/](https://github.com/Erica-cod/ai_chat_monitor_sdk/tree/main/examples) directory on GitHub includes a production-ready Prometheus backend and a Grafana dashboard:
 
-- **`examples/backend-prometheus.ts`** — Express server that converts SDK events into Prometheus metrics. Covers all event types with `app_id`, `model`, and `provider` labels.
-- **`examples/grafana-dashboard.json`** — importable Grafana dashboard with TTFT/TTLB/TPS percentile charts, token usage breakdown, error rates, Web Vitals, and active stream gauges. Uses a `$app_id` template variable for multi-app filtering.
+- **[backend-prometheus.ts](https://github.com/Erica-cod/ai_chat_monitor_sdk/blob/main/examples/backend-prometheus.ts)** — Express server that converts SDK events into Prometheus metrics. Covers all event types with `app_id`, `model`, and `provider` labels.
+- **[grafana-dashboard.json](https://github.com/Erica-cod/ai_chat_monitor_sdk/blob/main/examples/grafana-dashboard.json)** — importable Grafana dashboard with TTFT/TTLB/TPS percentile charts, token usage breakdown, error rates, Web Vitals, and active stream gauges. Uses a `$app_id` template variable for multi-app filtering.
 
 Quick setup:
 

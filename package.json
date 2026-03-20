@@ -18,6 +18,14 @@
   ],
   "license": "MIT",
   "author": "",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Erica-cod/ai_chat_monitor_sdk.git"
+  },
+  "homepage": "https://github.com/Erica-cod/ai_chat_monitor_sdk#readme",
+  "bugs": {
+    "url": "https://github.com/Erica-cod/ai_chat_monitor_sdk/issues"
+  },
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
